@@ -279,7 +279,7 @@ with main_container:
     # 2. Configuration
     conf_col1, conf_col2 = st.columns(2)
     with conf_col1:
-        use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
+        use_gpt = st.toggle("AI KBLI Classification", value=True, help="Use AI to extract KBLI and clean addresses")
         # Try to get API key from secrets
         secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
         
@@ -289,8 +289,8 @@ with main_container:
             api_key_input = st.text_input("OpenAI API Key", type="password")
             api_key = api_key_input.strip() if api_key_input else None
         
-        show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
-        use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
+        show_map = st.toggle("Show Map Visualization", value=True)
+        use_location = st.toggle("Near Me Search", value=st.session_state.use_location_toggle, key="loc_toggle")
     
     # --- 3. SILENT LOCATION DETECTION (NO DIALOG) ---
     
