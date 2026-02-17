@@ -5,5 +5,5 @@ libatk-bridge2.0-0
 libcups2
 libdrm2
 libxkbcommon0
-libmesa-glx0
+libgl1
 libasound2
