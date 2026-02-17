@@ -31,7 +31,18 @@ st.markdown("Scrape business data from Google Maps easily.")
 
 st.sidebar.markdown("---")
 st.sidebar.header("Advanced Settings")
-headless = st.sidebar.checkbox("Show Browser (Disable Headless)", value=False)
+
+# Detect if running on Streamlit Cloud
+# Streamlit Cloud environment usually has these variables
+is_cloud = os.environ.get("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud" or os.environ.get("HOSTNAME") == "streamlit"
+
+if is_cloud:
+    st.sidebar.info("🌐 Running on Cloud: Headless mode is forced (no display).")
+    show_browser = False
+else:
+    # Local: default to "show browser" (headed mode)
+    show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping. Only works locally.")
+
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
 # Try to get API key from secrets
@@ -90,11 +101,10 @@ if st.button("🚀 Start Scraping", use_container_width=True):
 
             # Run scraper
             with st.spinner("Browser is running..."):
-                # On Streamlit Cloud, headless is usually required. 
-                # Locally, the user choice matters.
-                # However, the user requested "default headless tidak dicentang"
-                # which means headless=False (show browser).
-                results = scraper.run(search_term, total_results, not headless, progress_callback=update_progress)
+                # On Streamlit Cloud, headless MUST be True.
+                # Locally, it's the inverse of "Show Browser".
+                headless_param = True if is_cloud else not show_browser
+                results = scraper.run(search_term, total_results, headless_param, progress_callback=update_progress)
             
             if results:
                 if use_gpt:
