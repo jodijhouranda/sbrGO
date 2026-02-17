@@ -78,21 +78,26 @@ def delete_records(names_locations):
         st.error(f"Error deleting records: {e}")
         return False
 
-def deduplicate_db():
-    """Remove duplicates based on Name and Location (Lat/Lng)."""
+def deduplicate_db(df):
+    """Remove duplicates based on Name and Location (Lat/Lng) using Pandas."""
+    if df is None or df.empty:
+        return True
+    
     try:
+        # 1. Drop duplicates in Python
+        # Keep the latest scrape (highest scraped_at or last row)
+        df_unique = df.sort_values('scraped_at', ascending=False).drop_duplicates(
+            subset=['Name', 'Latitude', 'Longitude'], keep='first'
+        )
+        
+        # 2. Clear existing table
         with conn.session as session:
-            # Modern SQL deduplication using CTE or Temporary Table
-            session.execute(text("CREATE TEMPORARY TABLE temp_unique_results AS SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY Name, Latitude, Longitude ORDER BY scraped_at DESC) as rn FROM scraped_results) t WHERE rn = 1"))
             session.execute(text("DELETE FROM scraped_results"))
-            # We need to list columns explicitly if the table has auto-increment or extra cols, 
-            # but since we matched it previously, it should work. 
-            # Listing them is safer.
-            cols = ["Name", "Rating", "Reviews", "`Operation Hours`", "`Latest Review`", "Address", "Phone", "Website", "Latitude", "Longitude", "URL", "Negara", "Provinsi", "Kabupaten", "Kecamatan", "Kelurahan", "`Hamlet/Quarter`", "Jalan", "Nomor", "`Kode Pos`", "`Kategori OSM`", "KBLI", "`Nama Resmi KBLI`", "`Keterangan KBLI`", "`WhatsApp Link`", "scraped_at"]
-            col_str = ", ".join(cols)
-            session.execute(text(f"INSERT INTO scraped_results ({col_str}) SELECT {col_str} FROM temp_unique_results"))
-            session.execute(text("DROP TEMPORARY TABLE temp_unique_results"))
             session.commit()
+            
+        # 3. Re-insert unique records
+        # Note: We use conn.engine for to_sql
+        df_unique.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
         return True
     except Exception as e:
         st.error(f"Error deduplicating: {e}")
@@ -127,19 +132,14 @@ if df_db is not None and not df_db.empty:
         # Calculate Unique 2-Digit KBLI
         kbli_2digit = 0
         if 'KBLI' in df_db.columns:
-            # Safe conversion to string and slicing first 2 digits
             kbli_series = df_db['KBLI'].astype(str).str.strip().str[:2]
-            # Filter out 'na', 'No', 'N/', or empty
             kbli_series = kbli_series[kbli_series.str.match(r'^\d{2}$', na=False)]
             kbli_2digit = kbli_series.nunique()
         st.metric("Unique KBLI 2-Digit", f"{kbli_2digit}")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- TABLE SECTION ---
-    st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Master Data Storage</p>', unsafe_allow_html=True)
-    st.markdown('<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">📋 Scraped Results Table</p>', unsafe_allow_html=True)
-
+    # --- TABLE SECTION (Headers removed as requested) ---
     df_display = df_db.copy()
     df_display.insert(0, "Select", False)
     
@@ -165,7 +165,7 @@ if df_db is not None and not df_db.empty:
     
     with act_col1:
         if st.button("🔄 Remove Duplicates", use_container_width=True):
-            if deduplicate_db():
+            if deduplicate_db(df_db):
                 st.success("Duplicates removed!")
                 time.sleep(1)
                 st.rerun()
