@@ -43,47 +43,88 @@ def show_login_page():
     # Premium Login UI
     st.markdown("""
     <style>
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(20px);
-            border-radius: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            text-align: center;
+        /* Hide default Streamlit elements on login page */
+        [data-testid="stHeader"] { visibility: hidden; }
+        
+        /* Centering and Background */
+        .stApp {
+            background: radial-gradient(circle at top right, #f8f9ff 0%, #ffffff 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
-        .stTextInput > div > div > input {
-            border-radius: 10px;
+
+        /* Target the form container specifically */
+        [data-testid="stForm"] {
+            border: 1px solid rgba(255, 255, 255, 0.4) !important;
+            background: rgba(255, 255, 255, 0.6) !important;
+            backdrop-filter: blur(20px) !important;
+            border-radius: 28px !important;
+            padding: 3rem !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1) !important;
+            max-width: 450px;
+            margin: auto;
         }
+
         .title-no { color: #6366f1; }
         .title-sbr { color: #1e293b; }
         .title-go { color: #a855f7; }
-        .main-title { font-size: 2.5rem; font-weight: 800; margin-bottom: 0px; }
-        .subtitle { color: #94a3b8; font-size: 0.8rem; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
+        .main-title { 
+            font-size: 3rem !important; 
+            font-weight: 800; 
+            margin-bottom: 5px; 
+            text-align: center;
+            letter-spacing: -1px;
+        }
+        .subtitle { 
+            color: #94a3b8; 
+            font-size: 0.75rem !important; 
+            font-weight: 600; 
+            text-transform: uppercase; 
+            letter-spacing: 2px;
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+        
+        /* Input & Button Styling */
+        .stTextInput input {
+            border-radius: 12px !important;
+            border: 1px solid #e2e8f0 !important;
+            padding: 12px !important;
+        }
+        
+        .stButton button {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
+            border-radius: 12px !important;
+            padding: 12px 0 !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.5px !important;
+            margin-top: 1rem !important;
+        }
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    st.markdown('<p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitle" style="margin-bottom: 2rem;">Authenticating Access</p>', unsafe_allow_html=True)
+    # Use columns to position the login form in the center of the screen
+    _, col, _ = st.columns([1, 1.5, 1])
     
-    with st.form("login_form"):
-        user_input = st.text_input("Username", placeholder="Username")
-        pass_input = st.text_input("Password", type="password", placeholder="Password")
-        submit = st.form_submit_button("Sign In", use_container_width=True)
+    with col:
+        st.markdown('<p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p>', unsafe_allow_html=True)
+        st.markdown('<p class="subtitle">Secure Data Access</p>', unsafe_allow_html=True)
         
-        if submit:
-            success, user, is_admin = check_login(user_input, pass_input)
-            if success:
-                st.session_state.authenticated = True
-                st.session_state.username = user
-                st.session_state.is_superuser = is_admin
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
-    st.markdown('</div>', unsafe_allow_html=True)
+        with st.form("login_form", clear_on_submit=False):
+            user_input = st.text_input("Username", placeholder="Enter your username")
+            pass_input = st.text_input("Password", type="password", placeholder="Enter your password")
+            submit = st.form_submit_button("SIGN IN", use_container_width=True)
+            
+            if submit:
+                success, user, is_admin = check_login(user_input, pass_input)
+                if success:
+                    st.session_state.authenticated = True
+                    st.session_state.username = user
+                    st.session_state.is_superuser = is_admin
+                    st.rerun()
+                else:
+                    st.error("Authentication failed. Please check your credentials.")
 
 @st.cache_resource
 def install_playwright():
