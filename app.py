@@ -254,36 +254,33 @@ with main_container:
     
     # --- 3. HANDLE LOCATION LOGIC & DIALOG ---
     
-    @st.dialog("🛰️ Mencapai Lokasi Anda")
+    @st.dialog("📍 Deteksi Lokasi")
     def show_location_dialog():
-        progress_bar = st.progress(0, text="Menghubungkan ke satelit...")
-        
-        # 1. GPS Lock
-        location_data = streamlit_js_eval(
-            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
-            key='geo_dialog_logic',
-            want_output=True
-        )
-        
-        if location_data:
-            lat, lng = location_data.get('latitude'), location_data.get('longitude')
-            if lat and lng:
-                progress_bar.progress(50, text="📍 GPS Terkunci! Mencari nama wilayah...")
-                
-                # 2. Address Resolution
-                human_address = get_location_description(lat, lng)
-                
-                st.session_state.user_lat = str(lat)
-                st.session_state.user_lng = str(lng)
-                st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
-                
-                progress_bar.progress(100, text=f"✅ Berhasil: {st.session_state.resolved_address}")
-                time.sleep(1.2)
-                st.rerun()
-        else:
-            st.warning("⚠️ Izinkan akses lokasi di browser untuk melanjutkan.")
-            if st.button("🔄 Coba Lagi"):
-                st.rerun()
+        # Minimalist status indicator
+        with st.status("Sedang menyambungkan ke satelit...", expanded=True) as status:
+            location_data = streamlit_js_eval(
+                js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
+                key='geo_capture_v4_unique', # Unique key to prevent ID errors
+                want_output=True
+            )
+            
+            if location_data:
+                lat, lng = location_data.get('latitude'), location_data.get('longitude')
+                if lat and lng:
+                    status.update(label="📍 Menemukan wilayah...", state="running")
+                    
+                    human_address = get_location_description(lat, lng)
+                    
+                    st.session_state.user_lat = str(lat)
+                    st.session_state.user_lng = str(lng)
+                    st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
+                    
+                    status.update(label="✅ Lokasi Terkunci!", state="complete")
+                    time.sleep(1.2)
+                    st.rerun()
+            else:
+                # Fallback message
+                st.write("🛰️ *Pastikan GPS aktif & ijinkan akses di browser...*")
 
     # Toggle Handling
     if use_location != st.session_state.use_location_toggle:
