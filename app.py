@@ -63,13 +63,13 @@ st.markdown("""
     
     .subtitle {
         color: #94a3b8;
-        font-size: 0.75rem;
+        font-size: 0.6rem; /* Made significantly smaller */
         font-weight: 500;
         text-transform: uppercase;
-        letter-spacing: 2px;
-        margin-top: -5px;
-        margin-bottom: 3.5rem;
-        opacity: 0.8;
+        letter-spacing: 1px;
+        margin-top: -10px;
+        margin-bottom: 3rem;
+        opacity: 0.6;
     }
     
     /* Card-like containers */
