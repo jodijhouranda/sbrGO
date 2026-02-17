@@ -146,6 +146,12 @@ if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
 if 'use_location' not in st.session_state: st.session_state.use_location = False
 
+# --- 1. PULL GEOLOCATION FROM URL FIRST ---
+query_params = st.query_params
+if "lat" in query_params and "lng" in query_params:
+    st.session_state.user_lat = query_params["lat"]
+    st.session_state.user_lng = query_params["lng"]
+
 # Unified Main UI layout
 main_container = st.container(border=True)
 with main_container:
@@ -158,14 +164,15 @@ with main_container:
     
     st.markdown("---")
     
-    # Pre-calculate modified query for preview
+    # --- 2. PRE-CALCULATE MODIFIED QUERY ---
     modified_query = search_term
     if st.session_state.use_location and st.session_state.user_lat and st.session_state.user_lng:
-        loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-        if loc_description:
-            modified_query = f"{search_term} di sekitar {loc_description}"
+        with st.spinner("📍 Resolving local address..."):
+            loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+            if loc_description:
+                modified_query = f"{search_term} di sekitar {loc_description}"
     
-    # 2. Configuration
+    # 3. Configuration
     conf_col1, conf_col2 = st.columns(2)
     with conf_col1:
         use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
@@ -216,21 +223,15 @@ with main_container:
                 height=30
             )
             
-            # Pull coordinates from URL query params
-            query_params = st.query_params
-            if "lat" in query_params and "lng" in query_params:
-                st.session_state.user_lat = query_params["lat"]
-                st.session_state.user_lng = query_params["lng"]
-                
-                if modified_query != search_term:
-                    st.markdown(f"""
-                        <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent); border-left: 4px solid #6366f1; padding: 12px; border-radius: 8px; margin-top: 10px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.05);">
-                            <p style="color:#4338ca; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin:0;">🎯 Keyword Lokasi Aktif:</p>
-                            <p style="color:#1e293b; font-size:1rem; font-weight:500; margin:4px 0 0 0;">{modified_query}</p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.info(f"📍 Menunggu resolusi alamat GPS...")
+            if modified_query != search_term:
+                st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)); border-left: 5px solid #6366f1; padding: 15px; border-radius: 10px; margin-top: 15px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);">
+                        <p style="color:#4338ca; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 5px 0;">🎯 Targeting Keyword:</p>
+                        <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            elif st.session_state.user_lat:
+                 st.info(f"📍 Menunggu resolusi alamat GPS...")
 
     st.markdown("---")
     start_idx = st.button("🚀 Start Extraction", use_container_width=True)
