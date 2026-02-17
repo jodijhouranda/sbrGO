@@ -105,9 +105,14 @@ st.markdown("""
         border-right: 1px solid #f1f5f9;
     }
     
-    /* Progress bar */
-    div[data-testid="stProgress"] > div > div > div {
-        background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+    /* Container styling */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background: rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 16px !important;
+        padding: 2rem !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -139,13 +144,16 @@ with st.sidebar.expander("Usage Guide"):
     """)
 
 # Main UI layout
-col1, col2 = st.columns([3, 1])
-with col1:
-    search_term = st.text_input("Search Query", placeholder="e.g., Coffee in Jakarta")
-with col2:
-    total_results = st.number_input("Limit", min_value=1, max_value=20, value=10)
+with st.container(border=True):
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search_term = st.text_input("Search Query", placeholder="e.g., Coffee in Jakarta")
+    with col2:
+        total_results = st.number_input("Limit", min_value=1, max_value=20, value=10)
+    
+    start_idx = st.button("Start Extraction", use_container_width=True)
 
-if st.button("Start Extraction", use_container_width=True):
+if start_idx:
     if not search_term:
         st.error("Please enter a search term.")
     elif use_gpt and not api_key:
