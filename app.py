@@ -23,8 +23,8 @@ install_playwright()
 
 st.set_page_config(page_title="Google Maps Scraper", page_icon="🗺️", layout="wide")
 
-st.title("🗺️ Google Maps Scraper")
-st.markdown("Scrape business data from Google Maps easily.")
+st.markdown("### 🗺️ Google Maps Scraper")
+st.markdown("<small>Scrape business data from Google Maps easily.</small>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Advanced Settings")
@@ -36,13 +36,14 @@ secret_api_key = st.secrets.get("OPENAI_API_KEY")
 
 if secret_api_key:
     st.sidebar.success("✅ API Key loaded from secrets")
-    api_key = secret_api_key
+    api_key = secret_api_key.strip()
 else:
-    api_key = st.sidebar.text_input(
+    api_key_input = st.sidebar.text_input(
         "OpenAI API Key", 
         type="password", 
         help="Enter your OpenAI API key here if not configured in secrets.toml"
     )
+    api_key = api_key_input.strip() if api_key_input else None
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("ℹ️ Usage Tips & Safety"):
