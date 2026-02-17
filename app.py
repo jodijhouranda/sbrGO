@@ -37,14 +37,14 @@ st.markdown("""
     }
     
     /* Global Title Styling */
-    /* Global Title Styling */
     .main-title {
-        font-size: 30rem;
+        font-size: 15vw !important; /* Massive scale relative to viewport width */
         font-weight: 900;
         margin-bottom: 0px;
-        letter-spacing: -8px;
-        line-height: 0.8;
+        letter-spacing: 0px !important; /* Fix overlapping */
+        line-height: 1 !important;
         text-shadow: 0 40px 120px rgba(99, 102, 241, 0.3);
+        white-space: nowrap;
     }
     
     .title-no { color: #6366f1; }
@@ -54,11 +54,11 @@ st.markdown("""
     .logo-container {
         display: flex;
         align-items: center;
-        gap: 30px;
-        margin-top: -100px;
-        margin-bottom: 0px;
+        width: 100%;
+        margin-top: -80px;
+        margin-bottom: 20px;
         padding-top: 4rem;
-        overflow-x: hidden;
+        overflow: visible !important;
     }
     
     .subtitle {
