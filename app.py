@@ -147,9 +147,52 @@ def get_location_description(lat, lng):
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
-if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
-if 'show_loc_dialog' not in st.session_state: st.session_state.show_loc_dialog = False
+if 'loc_step' not in st.session_state: st.session_state.loc_step = 0 # 0: None, 1: GPS, 2: Geocoding
+
+@st.dialog("🛰️ Deteksi Lokasi Otomatis")
+def location_progress_dialog():
+    if not st.session_state.user_lat:
+        st.write("### Tahap 1/2: Mengunci Titik GPS")
+        st.markdown("Mohon beri izin lokasi jika muncul permintaan dari browser.")
+        st.progress(40, text="Sedang menunggu sinyal satelit...")
+        
+        # Automatic GPS Script inside Dialog
+        st.components.v1.html(
+            """
+            <script>
+                function getLoc() {
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        const lat = pos.coords.latitude.toFixed(6);
+                        const lng = pos.coords.longitude.toFixed(6);
+                        const params = new URLSearchParams(window.parent.location.search);
+                        params.set('lat', lat);
+                        params.set('lng', lng);
+                        window.parent.location.search = params.toString();
+                    }, function(err) {
+                        console.log("GPS Seek: " + err.message);
+                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
+                }
+                setTimeout(getLoc, 500); // Small delay to ensure dialog is ready
+            </script>
+            """, height=0
+        )
+    else:
+        st.write("### Tahap 2/2: Menerjemahkan Alamat")
+        st.markdown(f"Koordinat terkunci: `{st.session_state.user_lat}, {st.session_state.user_lng}`")
+        st.progress(85, text="Mencari nama jalan & wilayah...")
+        
+        # Server-side address resolution
+        with st.spinner("Mencari alamat..."):
+            addr = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+            if addr:
+                st.session_state.resolved_address = addr
+                st.success(f"Ditemukan: **{addr}**")
+                time.sleep(1)
+                st.rerun() # This will close dialog because resolved_address is now set
+            else:
+                st.error("Gagal mendapatkan alamat. Silakan input manual.")
+                if st.button("Tutup"): st.rerun()
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
@@ -188,11 +231,7 @@ with main_container:
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
                                       placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
         
-        # Feedback & Progress for Location (Visible inside the input flow)
-        if st.session_state.use_location_toggle and not st.session_state.resolved_address:
-            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Sedang mencari sinyal GPS & Alamat...</p>', unsafe_allow_html=True)
-            st.progress(35, text="🛰️ Menghubungkan ke satelit GPS...")
-        elif st.session_state.use_location_toggle and st.session_state.resolved_address:
+        if st.session_state.use_location_toggle and st.session_state.resolved_address:
              st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -223,32 +262,9 @@ with main_container:
             st.query_params.clear()
             st.rerun()
 
-    if use_location and not st.session_state.user_lat:
-        # Automatic GPS Detection Script (Restored)
-        st.components.v1.html(
-            """
-            <script>
-                function getLoc() {
-                    navigator.geolocation.getCurrentPosition(function(pos) {
-                        const lat = pos.coords.latitude.toFixed(6);
-                        const lng = pos.coords.longitude.toFixed(6);
-                        const params = new URLSearchParams(window.parent.location.search);
-                        // Prevent infinite reloads if already set
-                        if (params.get('lat') != lat || params.get('lng') != lng) {
-                            params.set('lat', lat);
-                            params.set('lng', lng);
-                            window.parent.location.search = params.toString();
-                        }
-                    }, function(err) {
-                        console.log("GPS Seek: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
-                }
-                // Call immediately and repeat
-                getLoc();
-                setInterval(getLoc, 4000);
-            </script>
-            """, height=0
-        )
+    # Trigger Pop-up Progress Dialog
+    if use_location and not st.session_state.resolved_address:
+        location_progress_dialog()
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
