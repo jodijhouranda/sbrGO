@@ -7,7 +7,7 @@ import os
 import asyncio
 import sys
 import time
-from streamlit_geolocator import streamlit_geolocator
+from streamlit_js_eval import streamlit_js_eval
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -199,23 +199,46 @@ with main_container:
         use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
     
     # --- 3. HANDLE LOCATION LOGIC & PREVIEW ---
+    
+    # Tombol Toggle
     if use_location != st.session_state.use_location_toggle:
         st.session_state.use_location_toggle = use_location
         if not use_location:
+            # Reset jika dimatikan
             st.session_state.user_lat = None
             st.session_state.user_lng = None
             st.session_state.resolved_address = None
-            st.query_params.clear()
             st.rerun()
 
+    # Logika Pencarian Lokasi
     if use_location and not st.session_state.resolved_address:
-        # User suggested logic for fast detection
-        loc = streamlit_geolocator()
-        if loc:
-            st.session_state.user_lat = str(loc['latitude'])
-            st.session_state.user_lng = str(loc['longitude'])
-            st.session_state.resolved_address = f"{loc['latitude']}, {loc['longitude']}"
-            st.rerun()
+        st.info("🛰️ Mencari titik koordinat Anda...")
+        
+        # Menggunakan streamlit_js_eval yang SUDAH ADA di import awal Anda
+        # Kita minta browser kirim latitude & longitude
+        location_data = streamlit_js_eval(
+            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve(pos.coords), err => resolve(null)))', 
+            key='geo_locator_final',
+            want_output=True
+        )
+
+        if location_data:
+            lat = location_data.get('latitude')
+            lng = location_data.get('longitude')
+            
+            if lat and lng:
+                st.session_state.user_lat = str(lat)
+                st.session_state.user_lng = str(lng)
+                st.session_state.resolved_address = f"{lat}, {lng}"
+                
+                st.success("✅ Lokasi terkunci!")
+                time.sleep(0.5)
+                st.rerun()
+        else:
+            st.warning("⚠️ Izinkan akses lokasi di browser (pop-up kiri atas), lalu tunggu sebentar.")
+            # Tombol pancingan refresh agar Streamlit baca ulang data dari browser
+            if st.button("🔄 Klik ini jika lokasi sudah di-Allow"):
+                st.rerun()
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
