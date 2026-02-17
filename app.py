@@ -10,6 +10,7 @@ import time
 from streamlit_js_eval import streamlit_js_eval
 import folium
 from streamlit_folium import st_folium
+from sqlalchemy import create_engine
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -234,287 +235,476 @@ def format_wa_link(phone, name=""):
     encoded_msg = urllib.parse.quote(msg)
     return f"https://wa.me/{final_num}?text={encoded_msg}"
 
-# Geolocation & UI state
-if 'user_lat' not in st.session_state: st.session_state.user_lat = None
-if 'user_lng' not in st.session_state: st.session_state.user_lng = None
-if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
-if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
+def get_db_engine():
+    """Create a SQLAlchemy engine for TiDB."""
+    try:
+        creds = st.secrets["tidb"]
+        # Using pymysql as the driver
+        conn_str = f"mysql+pymysql://{creds['user']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['database']}?charset=utf8mb4"
+        engine = create_engine(conn_str)
+        return engine
+    except Exception as e:
+        st.error(f"Database configuration error: {e}")
+        return None
 
-# --- 1. PULL GEOLOCATION FROM URL FIRST ---
-query_params = st.query_params
-if "lat" in query_params and "lng" in query_params:
-    st.session_state.user_lat = str(query_params["lat"])
-    st.session_state.user_lng = str(query_params["lng"])
-    st.session_state.use_location_toggle = True
+def save_to_tidb(df):
+    """Save the dataframe to TiDB table 'scraped_results'."""
+    if df is None or df.empty:
+        st.warning("No data to save.")
+        return
     
-    # Auto convert URL params to address
-    desc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-    st.session_state.resolved_address = desc if desc else f"{st.session_state.user_lat}, {st.session_state.user_lng}"
+    engine = get_db_engine()
+    if not engine:
+        return
 
-# Unified Main UI layout
-main_container = st.container(border=True)
-with main_container:
-    # 1. Search Details (Business Name -> Location -> Limit)
-    # Row 1: Business Name
-    search_term = st.text_input("🔍 Nama Bisnis / Kategori", placeholder="e.g., Coffee Shop, Bengkel, PT...")
+    try:
+        with st.status("Saving data to TiDB...", expanded=False) as status:
+            # Add a timestamp column
+            df_to_save = df.copy()
+            df_to_save['scraped_at'] = pd.Timestamp.now()
+            
+            # Save to table 'scraped_results'
+            # if_exists='append' to add to existing data
+            df_to_save.to_sql('scraped_results', con=engine, if_exists='append', index=False)
+            status.update(label="✅ Data successfully saved to TiDB!", state="complete")
+        st.success(f"Successfully saved {len(df)} records to TiDB.")
+    except Exception as e:
+        st.error(f"Error saving to database: {e}")
+        with st.expander("Show detailed error"):
+            st.code(str(e))
+
+        st.error(f"Error saving to database: {e}")
+        with st.expander("Show detailed error"):
+            st.code(str(e))
+
+def fetch_db_data():
+    """Fetch all data from TiDB."""
+    engine = get_db_engine()
+    if not engine:
+        return None
+    try:
+        return pd.read_sql("SELECT * FROM scraped_results", con=engine)
+    except Exception as e:
+        # Table might not exist yet
+        st.warning("Database table might not exist or is empty.")
+        return None
+
+def delete_records(names_locations):
+    """Delete selected records from TiDB based on Name and Latitude/Longitude."""
+    engine = get_db_engine()
+    if not engine:
+        return False
+    try:
+        # This is a bit complex without a primary key, but we'll use Name and Coordinates
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            for name, lat, lng in names_locations:
+                query = text("DELETE FROM scraped_results WHERE Name = :name AND Latitude = :lat AND Longitude = :lng")
+                conn.execute(query, {"name": name, "lat": lat, "lng": lng})
+        return True
+    except Exception as e:
+        st.error(f"Error deleting records: {e}")
+        return False
+
+def deduplicate_db():
+    """Remove duplicates based on Name and Location (Lat/Lng)."""
+    engine = get_db_engine()
+    if not engine:
+        return False
+    try:
+        # Standard SQL deduplication strategy: keep the one with earliest scraped_at or just use a temp table
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            # Create a temporary table with unique records
+            conn.execute(text("CREATE TEMPORARY TABLE temp_unique_results AS SELECT * FROM scraped_results GROUP BY Name, Latitude, Longitude"))
+            # Clear original table
+            conn.execute(text("DELETE FROM scraped_results"))
+            # Insert back unique records
+            conn.execute(text("INSERT INTO scraped_results SELECT * FROM temp_unique_results"))
+            # Temp table drops automatically at end of session, but good to be explicit
+            conn.execute(text("DROP TEMPORARY TABLE temp_unique_results"))
+        return True
+    except Exception as e:
+        st.error(f"Error deduplicating: {e}")
+        return False
+
+# Sidebar Navigation
+st.sidebar.markdown('### 🧭 Navigation')
+page = st.sidebar.radio("Go to", ["Scraper", "Database View"])
+
+def show_scraper_page():
+    # Geolocation & UI state
+    if 'user_lat' not in st.session_state: st.session_state.user_lat = None
+    if 'user_lng' not in st.session_state: st.session_state.user_lng = None
+    if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
+    if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
     
-    # Row 2: Location & Limit
-    row2_col1, row2_col2 = st.columns([3, 1])
-    with row2_col1:
-        location_input = st.text_input("📍 Lokasi / Wilayah", 
-                                      value=st.session_state.resolved_address if st.session_state.resolved_address else "",
-                                      placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
+    # --- 1. PULL GEOLOCATION FROM URL FIRST ---
+    query_params = st.query_params
+    if "lat" in query_params and "lng" in query_params:
+        st.session_state.user_lat = str(query_params["lat"])
+        st.session_state.user_lng = str(query_params["lng"])
+        st.session_state.use_location_toggle = True
         
-        if st.session_state.use_location_toggle:
-            if st.session_state.resolved_address:
-                 st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Terkunci: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
+        # Auto convert URL params to address
+        desc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+        st.session_state.resolved_address = desc if desc else f"{st.session_state.user_lat}, {st.session_state.user_lng}"
+
+    # Unified Main UI layout
+    main_container = st.container(border=True)
+    with main_container:
+        # 1. Search Details (Business Name -> Location -> Limit)
+        # Row 1: Business Name
+        search_term = st.text_input("🔍 Nama Bisnis / Kategori", placeholder="e.g., Coffee Shop, Bengkel, PT...")
+        
+        # Row 2: Location & Limit
+        row2_col1, row2_col2 = st.columns([3, 1])
+        with row2_col1:
+            location_input = st.text_input("📍 Lokasi / Wilayah", 
+                                          value=st.session_state.resolved_address if st.session_state.resolved_address else "",
+                                          placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
+            
+            if st.session_state.use_location_toggle:
+                if st.session_state.resolved_address:
+                     st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Terkunci: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
+                else:
+                     st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">🛰️ Sedang mengunci koordinat...</p>', unsafe_allow_html=True)
+                     
+        with row2_col2:
+            total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
+        
+        st.markdown("---")
+        
+        # 2. Configuration
+        conf_col1, conf_col2 = st.columns(2)
+        with conf_col1:
+            use_gpt = st.toggle("AI KBLI Classification", value=True, help="Use AI to extract KBLI and clean addresses")
+            # Try to get API key from secrets
+            secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
+            
+            if secret_api_key:
+                api_key = str(secret_api_key).strip()
             else:
-                 st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">🛰️ Sedang mengunci koordinat...</p>', unsafe_allow_html=True)
-                 
-    with row2_col2:
-        total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
-    
-    st.markdown("---")
-    
-    # 2. Configuration
-    conf_col1, conf_col2 = st.columns(2)
-    with conf_col1:
-        use_gpt = st.toggle("AI KBLI Classification", value=True, help="Use AI to extract KBLI and clean addresses")
-        # Try to get API key from secrets
-        secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
+                api_key_input = st.text_input("OpenAI API Key", type="password")
+                api_key = api_key_input.strip() if api_key_input else None
+            
+            show_map = st.toggle("Show Map Visualization", value=True)
+            use_location = st.toggle("Near Me Search", value=st.session_state.use_location_toggle, key="loc_toggle")
         
-        if secret_api_key:
-            api_key = str(secret_api_key).strip()
+        # --- 3. SILENT LOCATION DETECTION (NO DIALOG) ---
+        
+        # Toggle Handling (Reset state if turned off)
+        if use_location != st.session_state.use_location_toggle:
+            st.session_state.use_location_toggle = use_location
+            if not use_location:
+                st.session_state.user_lat = None
+                st.session_state.user_lng = None
+                st.session_state.resolved_address = None
+                st.rerun()
+
+        # Silent Loader Logic (Directly in UI flow to fix ID errors)
+        if use_location and not st.session_state.resolved_address:
+            with st.status("📍 Sedang mengunci lokasi Anda...", expanded=False) as status:
+                location_data = streamlit_js_eval(
+                    js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
+                    key='geo_silent_logic_final_v5', # Fresh key
+                    want_output=True
+                )
+                
+                if location_data:
+                    lat, lng = location_data.get('latitude'), location_data.get('longitude')
+                    if lat and lng:
+                        status.update(label="🛰️ Berhasil mengunci GPS! Mencari info wilayah...", state="running")
+                        human_address = get_location_description(lat, lng)
+                        
+                        st.session_state.user_lat = str(lat)
+                        st.session_state.user_lng = str(lng)
+                        st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
+                        
+                        status.update(label="✅ Lokasi Siap!", state="complete")
+                        time.sleep(0.5)
+                        st.rerun()
+                else:
+                    st.write("🌍 *Mohon ijinkan akses lokasi di browser...*")
+
+        # Construct final query
+        target_loc = location_input if location_input else st.session_state.resolved_address
+        
+        if search_term and target_loc:
+            modified_query = f"{search_term} di sekitar {target_loc}"
+        elif search_term:
+            modified_query = search_term
         else:
-            api_key_input = st.text_input("OpenAI API Key", type="password")
-            api_key = api_key_input.strip() if api_key_input else None
+            modified_query = ""
+
+        st.markdown("---")
         
-        show_map = st.toggle("Show Map Visualization", value=True)
-        use_location = st.toggle("Near Me Search", value=st.session_state.use_location_toggle, key="loc_toggle")
-    
-    # --- 3. SILENT LOCATION DETECTION (NO DIALOG) ---
-    
-    # Toggle Handling (Reset state if turned off)
-    if use_location != st.session_state.use_location_toggle:
-        st.session_state.use_location_toggle = use_location
-        if not use_location:
-            st.session_state.user_lat = None
-            st.session_state.user_lng = None
-            st.session_state.resolved_address = None
-            st.rerun()
+        # 3. EXTRACTION TRIGGER & PREVIEW
+        if search_term and target_loc:
+            st.markdown(f"""
+                <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
+                            border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-bottom: 15px; 
+                            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
+                    <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
+                    <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
+                </div>
+            """, unsafe_allow_html=True)
 
-    # Silent Loader Logic (Directly in UI flow to fix ID errors)
-    if use_location and not st.session_state.resolved_address:
-        with st.status("📍 Sedang mengunci lokasi Anda...", expanded=False) as status:
-            location_data = streamlit_js_eval(
-                js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
-                key='geo_silent_logic_final_v5', # Fresh key
-                want_output=True
-            )
-            
-            if location_data:
-                lat, lng = location_data.get('latitude'), location_data.get('longitude')
-                if lat and lng:
-                    status.update(label="🛰️ Berhasil mengunci GPS! Mencari info wilayah...", state="running")
-                    human_address = get_location_description(lat, lng)
-                    
-                    st.session_state.user_lat = str(lat)
-                    st.session_state.user_lng = str(lng)
-                    st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
-                    
-                    status.update(label="✅ Lokasi Siap!", state="complete")
-                    time.sleep(0.5)
-                    st.rerun()
-            else:
-                st.write("🌍 *Mohon ijinkan akses lokasi di browser...*")
+        is_detecting = use_location and not st.session_state.resolved_address
+        btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Sedang Mencari Lokasi..."
+        start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting or not search_term)
 
-    # Construct final query
-    target_loc = location_input if location_input else st.session_state.resolved_address
-    
-    if search_term and target_loc:
-        modified_query = f"{search_term} di sekitar {target_loc}"
-    elif search_term:
-        modified_query = search_term
-    else:
-        modified_query = ""
-
-    st.markdown("---")
-    
-    # 3. EXTRACTION TRIGGER & PREVIEW
-    if search_term and target_loc:
-        st.markdown(f"""
-            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
-                        border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-bottom: 15px; 
-                        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
-                <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
-                <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-    is_detecting = use_location and not st.session_state.resolved_address
-    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Sedang Mencari Lokasi..."
-    start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting or not search_term)
-
-if start_idx:
-    if not search_term:
-        st.error("Please enter a search term.")
-    elif use_gpt and not api_key:
-        st.error("Please enter an OpenAI API Key or disable GPT enhancement.")
-    else:
-        try:
-            scraper = GoogleMapsScraper(api_key=api_key if use_gpt else None)
-            
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            def update_progress(current, total, message):
-                progress = current / total
-                progress_bar.progress(progress)
-                status_text.text(message)
-            
-            with st.spinner("Scraping Google Maps..."):
-                # Geolocation refining
-                lat = st.session_state.user_lat if use_location else None
-                lng = st.session_state.user_lng if use_location else None
+    if start_idx:
+        if not search_term:
+            st.error("Please enter a search term.")
+        elif use_gpt and not api_key:
+            st.error("Please enter an OpenAI API Key or disable GPT enhancement.")
+        else:
+            try:
+                scraper = GoogleMapsScraper(api_key=api_key if use_gpt else None)
                 
-                results = scraper.run(
-                    modified_query, 
-                    total_results, 
-                    True, 
-                    progress_callback=update_progress,
-                    user_lat=lat,
-                    user_lng=lng
-                )
-            
-            if results:
-                # 1. Enrichment with Administrative Data
-                with st.spinner("Enriching with Administrative Data..."):
-                    scraper.enrich_results(progress_callback=update_progress)
-
-                # 2. AI (GPT) Analysis
-                if use_gpt:
-                    with st.spinner("AI is analyzing KBLI..."):
-                        scraper.process_with_gpt(progress_callback=update_progress)
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
-                results = scraper.results
-                df = pd.DataFrame(results)
+                def update_progress(current, total, message):
+                    progress = current / total
+                    progress_bar.progress(progress)
+                    status_text.text(message)
                 
-                # --- 3. MAP VISUALIZATION (Interactive Folium) ---
-                if show_map:
-                    st.markdown("---")
-                    st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Mapping Distribution</p>', unsafe_allow_html=True)
-                    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Interactive Competitor Map</p>', unsafe_allow_html=True)
+                with st.spinner("Scraping Google Maps..."):
+                    # Geolocation refining
+                    lat = st.session_state.user_lat if use_location else None
+                    lng = st.session_state.user_lng if use_location else None
                     
-                    map_df = df.copy()
-                    map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
-                    map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
-                    map_df = map_df.dropna(subset=['latitude', 'longitude'])
-                    
-                    if not map_df.empty:
-                        # Center map at average location
-                        avg_lat = map_df['latitude'].mean()
-                        avg_lng = map_df['longitude'].mean()
-                        m = folium.Map(location=[avg_lat, avg_lng], zoom_start=13, control_scale=True)
-                        
-                        # Add markers with informative popups
-                        for _, row in map_df.iterrows():
-                            popup_html = f"""
-                            <div style="font-family: 'Outfit', sans-serif; min-width: 200px;">
-                                <h4 style="margin-bottom: 5px; color: #1e293b;">{row['Name']}</h4>
-                                <p style="margin: 0; color: #6366f1; font-weight: 600;">⭐ {row['Rating']} ({row['Reviews']} reviews)</p>
-                                <p style="margin-top: 5px; font-size: 0.9rem; color: #64748b;">{row.get('Kecamatan', '')} {row.get('Kabupaten', '')}</p>
-                                <a href="{row['URL']}" target="_blank" style="display: inline-block; margin-top: 10px; color: #6366f1; text-decoration: none; font-weight: 600;">Buka G-Maps ↗</a>
-                            </div>
-                            """
-                            folium.Marker(
-                                [row['latitude'], row['longitude']],
-                                popup=folium.Popup(popup_html, max_width=300),
-                                tooltip=row['Name'],
-                                icon=folium.Icon(color="indigo", icon="info-sign")
-                            ).add_to(m)
-                        
-                        st_folium(m, width="100%", height=500, returned_objects=[])
-                    else:
-                        st.warning("No location coordinates available to map.")
-
-                # --- 4. DATA ENRICHMENT & TABLE DISPLAY ---
-                if 'Phone' in df.columns:
-                    df['WhatsApp Link'] = df.apply(
-                        lambda row: format_wa_link(row['Phone'], row.get('Name', '')), 
-                        axis=1
+                    results = scraper.run(
+                        modified_query, 
+                        total_results, 
+                        True, 
+                        progress_callback=update_progress,
+                        user_lat=lat,
+                        user_lng=lng
                     )
+                
+                if results:
+                    # 1. Enrichment with Administrative Data
+                    with st.spinner("Enriching with Administrative Data..."):
+                        scraper.enrich_results(progress_callback=update_progress)
 
-                # Define logical order: Identity -> Position -> KBLI -> Other
-                ordered_cols = [
-                    "Name", "Kategori OSM",                     # Identity & Verification
-                    "WhatsApp Link", "Phone",                   # Contact
-                    "Negara", "Provinsi", "Kabupaten",          # Position (Admin)
-                    "Kecamatan", "Kelurahan", "Hamlet/Quarter",
-                    "Kode Pos", "Jalan", "Nomor", "Address",    # Position (Detailed)
-                    "Latitude", "Longitude", "URL",
-                    "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
-                    "Rating", "Reviews", "Operation Hours",      # Other
-                    "Latest Review", "Website"
-                ]
-                
-                # Filter out columns that might not exist (defensive)
-                final_cols = [c for c in ordered_cols if c in df.columns]
-                # Append any unexpected columns at the end
-                other_cols = [c for c in df.columns if c not in ordered_cols]
-                df = df[final_cols + other_cols]
+                    # 2. AI (GPT) Analysis
+                    if use_gpt:
+                        with st.spinner("AI is analyzing KBLI..."):
+                            scraper.process_with_gpt(progress_callback=update_progress)
+                    
+                    results = scraper.results
+                    df = pd.DataFrame(results)
+                    
+                    # --- 3. MAP VISUALIZATION (Interactive Folium) ---
+                    if show_map:
+                        st.markdown("---")
+                        st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Mapping Distribution</p>', unsafe_allow_html=True)
+                        st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Interactive Competitor Map</p>', unsafe_allow_html=True)
+                        
+                        map_df = df.copy()
+                        map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
+                        map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
+                        map_df = map_df.dropna(subset=['latitude', 'longitude'])
+                        
+                        if not map_df.empty:
+                            # Center map at average location
+                            avg_lat = map_df['latitude'].mean()
+                            avg_lng = map_df['longitude'].mean()
+                            m = folium.Map(location=[avg_lat, avg_lng], zoom_start=13, control_scale=True)
+                            
+                            # Add markers with informative popups
+                            for _, row in map_df.iterrows():
+                                popup_html = f"""
+                                <div style="font-family: 'Outfit', sans-serif; min-width: 200px;">
+                                    <h4 style="margin-bottom: 5px; color: #1e293b;">{row['Name']}</h4>
+                                    <p style="margin: 0; color: #6366f1; font-weight: 600;">⭐ {row['Rating']} ({row['Reviews']} reviews)</p>
+                                    <p style="margin-top: 5px; font-size: 0.9rem; color: #64748b;">{row.get('Kecamatan', '')} {row.get('Kabupaten', '')}</p>
+                                    <a href="{row['URL']}" target="_blank" style="display: inline-block; margin-top: 10px; color: #6366f1; text-decoration: none; font-weight: 600;">Buka G-Maps ↗</a>
+                                </div>
+                                """
+                                folium.Marker(
+                                    [row['latitude'], row['longitude']],
+                                    popup=folium.Popup(popup_html, max_width=300),
+                                    tooltip=row['Name'],
+                                    icon=folium.Icon(color="indigo", icon="info-sign")
+                                ).add_to(m)
+                            
+                            st_folium(m, width="100%", height=500, returned_objects=[])
+                        else:
+                            st.warning("No location coordinates available to map.")
 
-                st.markdown("---")
-                st.markdown(f'<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Scrape Results</p>', unsafe_allow_html=True)
-                st.markdown(f'<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">{search_term}</p>', unsafe_allow_html=True)
-                
-                # Show data with clickable links
-                st.dataframe(
-                    df,
-                    column_config={
-                        "URL": st.column_config.LinkColumn("G-Maps"),
-                        "WhatsApp Link": st.column_config.LinkColumn("Chat WA", help="Klik untuk chat WhatsApp langsung"),
-                        "Website": st.column_config.LinkColumn("Website"),
-                        "Reviews": st.column_config.NumberColumn("Reviews", format="%d"),
-                        "KBLI": st.column_config.TextColumn("Kode KBLI")
-                    },
-                    use_container_width=True
-                )
-                
-                # Download actions
-                dl_col1, dl_col2 = st.columns(2)
-                with dl_col1:
-                    csv = df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name=f"gmaps_{search_term.replace(' ', '_')}.csv",
-                        mime="text/csv",
+                    # --- 4. DATA ENRICHMENT & TABLE DISPLAY ---
+                    if 'Phone' in df.columns:
+                        df['WhatsApp Link'] = df.apply(
+                            lambda row: format_wa_link(row['Phone'], row.get('Name', '')), 
+                            axis=1
+                        )
+
+                    # Define logical order: Identity -> Position -> KBLI -> Other
+                    ordered_cols = [
+                        "Name", "Kategori OSM",                     # Identity & Verification
+                        "WhatsApp Link", "Phone",                   # Contact
+                        "Negara", "Provinsi", "Kabupaten",          # Position (Admin)
+                        "Kecamatan", "Kelurahan", "Hamlet/Quarter",
+                        "Kode Pos", "Jalan", "Nomor", "Address",    # Position (Detailed)
+                        "Latitude", "Longitude", "URL",
+                        "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
+                        "Rating", "Reviews", "Operation Hours",      # Other
+                        "Latest Review", "Website"
+                    ]
+                    
+                    # Filter out columns that might not exist (defensive)
+                    final_cols = [c for c in ordered_cols if c in df.columns]
+                    # Append any unexpected columns at the end
+                    other_cols = [c for c in df.columns if c not in ordered_cols]
+                    df = df[final_cols + other_cols]
+
+                    st.markdown("---")
+                    st.markdown(f'<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Scrape Results</p>', unsafe_allow_html=True)
+                    st.markdown(f'<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">{search_term}</p>', unsafe_allow_html=True)
+                    
+                    # Show data with clickable links
+                    st.dataframe(
+                        df,
+                        column_config={
+                            "URL": st.column_config.LinkColumn("G-Maps"),
+                            "WhatsApp Link": st.column_config.LinkColumn("Chat WA", help="Klik untuk chat WhatsApp langsung"),
+                            "Website": st.column_config.LinkColumn("Website"),
+                            "Reviews": st.column_config.NumberColumn("Reviews", format="%d"),
+                            "KBLI": st.column_config.TextColumn("Kode KBLI")
+                        },
                         use_container_width=True
                     )
-                with dl_col2:
-                    try:
-                        import io
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            df.to_excel(writer, index=False)
+                    
+                    # Download actions
+                    dl_col1, dl_col2 = st.columns(2)
+                    with dl_col1:
+                        csv = df.to_csv(index=False).encode('utf-8')
                         st.download_button(
-                            label="Download Excel",
-                            data=buffer.getvalue(),
-                            file_name=f"gmaps_{search_term.replace(' ', '_')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            label="Download CSV",
+                            data=csv,
+                            file_name=f"gmaps_{search_term.replace(' ', '_')}.csv",
+                            mime="text/csv",
                             use_container_width=True
                         )
-                    except:
-                        pass
+                    with dl_col2:
+                        try:
+                            import io
+                            buffer = io.BytesIO()
+                            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False)
+                            st.download_button(
+                                label="Download Excel",
+                                data=buffer.getvalue(),
+                                file_name=f"gmaps_{search_term.replace(' ', '_')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        except:
+                            pass
+                    
+                    # --- 5. DATABASE ACTION ---
+                    st.markdown("---")
+                    if st.button("💾 Save to Database (TiDB)", use_container_width=True):
+                        save_to_tidb(df)
+                        
+                else:
+                    st.warning("No results found. Please refine your query.")
+                    
+            except Exception as e:
+                st.error(f"Error: {e}")
+                with st.expander("Click for details"):
+                    import traceback
+                    st.code(traceback.format_exc())
+
+def show_db_view_page():
+    st.markdown('<p style="font-size:2rem; font-weight:800; color:#1e293b;">📦 Database Explorer</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitle">Manage and Analyze your saved business data.</p>', unsafe_allow_html=True)
+
+    df_db = fetch_db_data()
+    
+    if df_db is not None and not df_db.empty:
+        # Management Row
+        act_col1, act_col2, act_col3 = st.columns(3)
+        
+        with act_col1:
+            if st.button("🔄 Remove Duplicates", use_container_width=True, help="Berdasarkan Nama dan Koordinat"):
+                if deduplicate_db():
+                    st.success("Duplicates removed!")
+                    st.rerun()
+        
+        with act_col2:
+            # Export Excel from DB
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_db.to_excel(writer, index=False)
+            st.download_button(
+                label="📥 Export Excel (All)",
+                data=buffer.getvalue(),
+                file_name="sbrgo_database_export.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+        with act_col3:
+            st.metric("Total Records", len(df_db))
+
+        st.markdown("---")
+        st.info("💡 **Tip:** Anda bisa memilih baris di bawah ini dan mengklik tombol 'Delete Selected' untuk menghapus data.")
+        
+        # Use data editor for selection
+        # We need a way to track selection. st.data_editor has num_rows="dynamic" but we want selection.
+        # Checkbox column is a common pattern
+        df_display = df_db.copy()
+        
+        # Select columns to display (clean view)
+        cols_to_show = ["Name", "Kabupaten", "Kecamatan", "KBLI", "Nama Resmi KBLI", "Rating", "Reviews", "scraped_at"]
+        actual_cols = [c for c in cols_to_show if c in df_display.columns]
+        
+        # Add checkbox column for selection
+        df_display.insert(0, "Select", False)
+        
+        edited_df = st.data_editor(
+            df_display,
+            column_config={
+                "Select": st.column_config.CheckboxColumn("Smt", default=False),
+                "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape")
+            },
+            disabled=[c for c in df_display.columns if c != "Select"],
+            hide_index=True,
+            use_container_width=True,
+            key="db_editor"
+        )
+        
+        # Filter selected rows
+        selected_rows = edited_df[edited_df["Select"] == True]
+        
+        if not selected_rows.empty:
+            st.warning(f"Terpilih {len(selected_rows)} data untuk dihapus.")
+            if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
+                # Get ID parameters (Name, Lat, Lng)
+                to_delete = []
+                for idx in selected_rows.index:
+                    name = df_db.iloc[idx]["Name"]
+                    lat = df_db.iloc[idx]["Latitude"]
+                    lng = df_db.iloc[idx]["Longitude"]
+                    to_delete.append((name, lat, lng))
                 
-            else:
-                st.warning("No results found. Please refine your query.")
-                
-        except Exception as e:
-            st.error(f"Error: {e}")
-            with st.expander("Click for details"):
-                import traceback
-                st.code(traceback.format_exc())
+                if delete_records(to_delete):
+                    st.success(f"Berhasil menghapus {len(to_delete)} data.")
+                    time.sleep(1)
+                    st.rerun()
+    else:
+        st.info("Database kosong. Silakan gunakan Scraper terlebih dahulu.")
+
+# Page Routing
+if page == "Scraper":
+    show_scraper_page()
+else:
+    show_db_view_page()
 
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ using Playwright and Streamlit by JJS</p>", unsafe_allow_html=True)

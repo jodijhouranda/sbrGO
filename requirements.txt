@@ -8,3 +8,5 @@ requests
 streamlit-js-eval
 folium
 streamlit-folium
+sqlalchemy
+pymysql
