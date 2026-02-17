@@ -127,27 +127,63 @@ st.markdown('<p class="subtitle">Scrape business data from Google Maps in second
 
 @st.cache_data(show_spinner=False)
 def get_location_description(lat, lng):
-    """Resolve coordinates to a short location description (Jalan + Kabupaten)."""
+    """Resolve coordinates to detailed address (Jalan/Desa/Kec + Kabupaten)."""
     if not lat or not lng: return None
     try:
         headers = {'User-Agent': 'sbrGO-App/1.0'}
+        # Menggunakan zoom 18 untuk detail level jalan/bangunan
         geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
         res = requests.get(geo_url, headers=headers, timeout=5)
+        
         if res.status_code == 200:
             data = res.json()
             addr = data.get('address', {})
-            # Prioritaskan Jalan (Road/Suburb)
-            jalan = addr.get('road') or addr.get('suburb') or addr.get('village') or ""
-            # Prioritaskan Kabupaten/Kota
-            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or addr.get('state_district') or ""
             
-            if jalan or kabupaten:
-                return f"{jalan}, {kabupaten}".strip(", ")
-            return f"{lat}, {lng}"
+            # 1. Cari detail spesifik (Jalan / Gedung / Lingkungan)
+            # Kita cek banyak key karena OSM tidak konsisten menaruh nama jalan
+            detail = (
+                addr.get('road') or 
+                addr.get('pedestrian') or 
+                addr.get('street') or
+                addr.get('residential') or
+                addr.get('path') or
+                addr.get('hamlet') or   # Dusun/RW
+                addr.get('village') or  # Desa/Kelurahan
+                addr.get('suburb') or   # Kecamatan
+                addr.get('neighbourhood') or
+                addr.get('public_building')
+            )
+
+            # 2. Cari Kabupaten / Kota
+            kabupaten = (
+                addr.get('city') or 
+                addr.get('regency') or 
+                addr.get('municipality') or 
+                addr.get('county') or 
+                addr.get('state_district') or
+                ""
+            )
+
+            # 3. Format Gabungan
+            parts = []
+            if detail: 
+                parts.append(detail)
+            
+            # Hindari duplikasi jika nama desa = nama kabupaten (jarang, tapi mungkin)
+            if kabupaten and kabupaten != detail:
+                parts.append(kabupaten)
+            
+            # Jika tetap kosong (jarang terjadi), ambil bagian pertama dari display_name panjang
+            if not parts and 'display_name' in data:
+                return data['display_name'].split(',')[0]
+
+            return ", ".join(parts).strip()
+            
     except Exception:
         pass
-    return None
-
+        
+    # Fallback jika gagal total
+    return f"{lat}, {lng}"
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
