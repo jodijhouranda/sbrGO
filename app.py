@@ -29,24 +29,30 @@ def install_playwright():
 install_playwright()
 
 def get_location_description(lat, lng):
-    """Get a human-readable address from lat/lng using Reverse Geocoding."""
+    """Get a human-readable address from lat/lng using Reverse Geocoding with full Indo admin levels."""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-        headers = {'User-Agent': 'NoSBRGo/1.1'}
+        headers = {'User-Agent': 'NoSBRGo/1.2'}
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
             addr = data.get('address', {})
             
-            # Detailed administrative parsing
-            road = addr.get('road')
-            village = addr.get('village') or addr.get('hamlet')
-            suburb = addr.get('suburb') or addr.get('neighbourhood')
-            city = addr.get('city') or addr.get('town') or addr.get('city_district')
-            county = addr.get('county')
+            # Very comprehensive parsing for Indonesian administrative divisions
+            road = addr.get('road') or addr.get('street')
+            village = addr.get('village') or addr.get('hamlet') or addr.get('village_district')
+            suburb = addr.get('suburb') or addr.get('neighbourhood') or addr.get('quarter')
+            kecamatan = addr.get('city_district') or addr.get('district') or addr.get('municipality')
+            kota_kab = addr.get('city') or addr.get('town') or addr.get('county')
             
-            parts = [p for p in [road, village, suburb, city, county] if p]
-            return ", ".join(parts) if parts else data.get('display_name')
+            # Filter duplicates and build parts
+            all_parts = [road, village, suburb, kecamatan, kota_kab]
+            unique_parts = []
+            for p in all_parts:
+                if p and p not in unique_parts:
+                    unique_parts.append(str(p))
+            
+            return ", ".join(unique_parts) if unique_parts else data.get('display_name')
         return None
     except:
         return None
@@ -289,7 +295,6 @@ def show_scraper_page():
                     lat = st.session_state.user_lat if use_location else None
                     lng = st.session_state.user_lng if use_location else None
                     results = scraper.run(modified_query, total_results, True, progress_callback=update_progress, user_lat=lat, user_lng=lng)
-                
                 if results:
                     with st.spinner("Enriching with Administrative Data..."):
                         scraper.enrich_results(progress_callback=update_progress)
@@ -298,7 +303,10 @@ def show_scraper_page():
                             scraper.process_with_gpt(progress_callback=update_progress)
                     
                     st.session_state.last_results = scraper.results
-                    st.rerun() # Refresh to show results persistantly
+                    # Ensure results are locked in
+                    st.success(f"Scraping complete! Found {len(scraper.results)} results.")
+                    time.sleep(1)
+                    st.rerun() 
             except Exception as e:
                 st.error(f"Error: {e}")
 
