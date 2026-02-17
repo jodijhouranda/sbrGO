@@ -36,12 +36,11 @@ st.sidebar.header("Advanced Settings")
 # Streamlit Cloud environment usually has these variables
 is_cloud = os.environ.get("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud" or os.environ.get("HOSTNAME") == "streamlit"
 
-if is_cloud:
-    st.sidebar.info("🌐 Running on Cloud: Headless mode is forced (no display).")
-    show_browser = False
-else:
-    # Local: default to "show browser" (headed mode)
-    show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping. Only works locally.")
+# Local: default to "show browser" (headed mode)
+show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping. Note: This usually only works locally and will cause an error on Streamlit Cloud.")
+
+if is_cloud and show_browser:
+    st.sidebar.warning("⚠️ You are on Streamlit Cloud. 'Show Browser' will likely fail because the cloud environment has no display. Uncheck this if you get an error.")
 
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
@@ -101,9 +100,8 @@ if st.button("🚀 Start Scraping", use_container_width=True):
 
             # Run scraper
             with st.spinner("Browser is running..."):
-                # On Streamlit Cloud, headless MUST be True.
-                # Locally, it's the inverse of "Show Browser".
-                headless_param = True if is_cloud else not show_browser
+                # Headless is the inverse of Show Browser.
+                headless_param = not show_browser
                 results = scraper.run(search_term, total_results, headless_param, progress_callback=update_progress)
             
             if results:
