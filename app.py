@@ -7,7 +7,7 @@ import os
 import asyncio
 import sys
 import time
-from streamlit_js_eval import streamlit_js_eval
+from streamlit_geolocator import streamlit_geolocator
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -209,14 +209,12 @@ with main_container:
             st.rerun()
 
     if use_location and not st.session_state.resolved_address:
-        # Silent Automatic Geolocation capture
-        loc = streamlit_js_eval(data_string='get_geolocation', key='get_geo_silent_final')
-        if loc and 'coords' in loc:
-            lat = round(loc['coords']['latitude'], 6)
-            lng = round(loc['coords']['longitude'], 6)
-            st.session_state.user_lat = str(lat)
-            st.session_state.user_lng = str(lng)
-            st.session_state.resolved_address = f"{lat}, {lng}"
+        # User suggested logic for fast detection
+        loc = streamlit_geolocator()
+        if loc:
+            st.session_state.user_lat = str(loc['latitude'])
+            st.session_state.user_lng = str(loc['longitude'])
+            st.session_state.resolved_address = f"{loc['latitude']}, {loc['longitude']}"
             st.rerun()
 
     # Construct final query
