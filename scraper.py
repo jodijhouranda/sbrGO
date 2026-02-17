@@ -120,8 +120,7 @@ class GoogleMapsScraper:
                     break
 
             # Limit to requested total
-            urls_list = list(urls)
-            urls = urls_list[:total_results]
+            urls = list(urls)[:total_results]
             print(f"Collected {len(urls)} URLs. Starting detail extraction...")
 
             # 2. Extract Details for each URL

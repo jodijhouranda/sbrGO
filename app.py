@@ -126,6 +126,7 @@ st.markdown('<p class="subtitle">Scrape business data from Google Maps in second
 @st.cache_data(show_spinner=False)
 def get_location_description(lat, lng):
     """Resolve coordinates to a short location description (Jalan + Kabupaten)."""
+    if not lat or not lng: return None
     try:
         headers = {'User-Agent': 'sbrGO-App/1.0'}
         geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
@@ -133,11 +134,12 @@ def get_location_description(lat, lng):
         if res.status_code == 200:
             data = res.json()
             addr = data.get('address', {})
-            jalan = addr.get('road') or ""
-            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or ""
+            jalan = addr.get('road') or addr.get('suburb') or ""
+            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or addr.get('state_district') or ""
             if jalan or kabupaten:
                 return f"{jalan} {kabupaten}".strip()
-    except:
+            return f"{lat}, {lng}"
+    except Exception:
         pass
     return None
 
@@ -148,45 +150,51 @@ if 'use_location_toggle' not in st.session_state: st.session_state.use_location_
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
 if 'show_loc_dialog' not in st.session_state: st.session_state.show_loc_dialog = False
 
-@st.dialog("📍 Pencarian Lokasi")
+@st.dialog("📍 Konfigurasi Lokasi")
 def show_location_dialog(search_term):
     st.markdown(f"Sedang mengoptimalkan pencarian untuk: **{search_term}**")
     
-    if not st.session_state.user_lat:
-        st.info("📡 Sedang meminta akses GPS dari browser...")
-        st.components.v1.html(
-            """
-            <script>
-                navigator.geolocation.getCurrentPosition(function(pos) {
-                    const lat = pos.coords.latitude.toFixed(6);
-                    const lng = pos.coords.longitude.toFixed(6);
-                    const params = new URLSearchParams(window.parent.location.search);
-                    if (params.get('lat') != lat) {
+    tab1, tab2 = st.tabs(["📡 Deteksi Otomatis", "⌨️ Input Manual"])
+    
+    with tab1:
+        if st.button("🛰️ Ambil Lokasi GPS (Lock GPS)", use_container_width=True, type="primary"):
+            st.info("📡 Sedang meminta akses GPS dari browser...")
+            st.components.v1.html(
+                """
+                <script>
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        const lat = pos.coords.latitude.toFixed(6);
+                        const lng = pos.coords.longitude.toFixed(6);
+                        const params = new URLSearchParams(window.parent.location.search);
                         params.set('lat', lat);
                         params.set('lng', lng);
                         window.parent.location.search = params.toString();
-                    }
-                }, function(err) {
-                    window.parent.alert("Gagal GPS: " + err.message);
-                }, {enableHighAccuracy: true, timeout: 5000});
-            </script>
-            """, height=0
-        )
-    else:
-        p_bar = st.progress(0, text="📡 Koordinat Terkunci...")
-        # Step 1: Resolve Address
-        p_bar.progress(40, text="🔍 Mencari nama jalan dan kabupaten...")
-        loc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+                    }, function(err) {
+                        window.parent.alert("Gagal GPS: " + err.message);
+                    }, {enableHighAccuracy: true, timeout: 8000});
+                </script>
+                """, height=0
+            )
         
-        if loc:
-            st.session_state.resolved_address = loc
-            p_bar.progress(100, text="✅ Alamat Berhasil Ditemukan")
-            st.success(f"Target Lokasi: **{loc}**")
-        else:
-            st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
-            st.warning("⚠️ Berhasil dapet titik GPS, tapi gagal ambil nama jalan.")
-            
-        if st.button("Konfirmasi & Lanjutkan", use_container_width=True):
+        if st.session_state.user_lat:
+            st.success(f"GPS Terkunci: `{st.session_state.user_lat}, {st.session_state.user_lng}`")
+            if st.button("🔗 Terjemahkan ke Alamat", use_container_width=True):
+                with st.spinner("Mencari nama wilayah..."):
+                    loc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+                    st.session_state.resolved_address = loc
+                    st.rerun()
+    
+    with tab2:
+        manual_addr = st.text_input("Masukkan Wilayah/Kota Manual", placeholder="e.g. Sleman, Yogyakarta")
+        if st.button("Simpan Lokasi Manual", use_container_width=True):
+            if manual_addr:
+                st.session_state.resolved_address = manual_addr
+                st.rerun()
+    
+    st.divider()
+    if st.session_state.resolved_address:
+        st.info(f"📍 Lokasi Saat Ini: **{st.session_state.resolved_address}**")
+        if st.button("✅ Selesai & Tutup", use_container_width=True):
             st.session_state.show_loc_dialog = False
             st.rerun()
 
@@ -230,9 +238,18 @@ with main_container:
     is_detecting = False
     
     with conf_col2:
-        # Toggle triggers the dialog if activated and no address is stored
+        # Toggle triggers clearing if turned off
         use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location_toggle, key="loc_toggle")
-        st.session_state.use_location_toggle = use_location
+        
+        if use_location != st.session_state.use_location_toggle:
+            st.session_state.use_location_toggle = use_location
+            if not use_location:
+                # Clear all location states when toggled off
+                st.session_state.user_lat = None
+                st.session_state.user_lng = None
+                st.session_state.resolved_address = None
+                st.query_params.clear() # Clear URL
+                st.rerun()
         
         if use_location:
             # Trigger dialog if we don't have a resolved name yet
