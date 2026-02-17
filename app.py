@@ -63,7 +63,7 @@ st.markdown("""
     
     .subtitle {
         color: #94a3b8;
-        font-size: 0.6rem; /* Made significantly smaller */
+        font-size: 0.65rem !important; /* Forces the small size */
         font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 1px;
@@ -183,7 +183,8 @@ if start_idx:
                 df = pd.DataFrame(results)
                 
                 st.markdown("---")
-                st.markdown(f"### 📊 Results for '{search_term}'")
+                st.markdown(f'<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Scrape Results</p>', unsafe_allow_html=True)
+                st.markdown(f'<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">{search_term}</p>', unsafe_allow_html=True)
                 
                 # Show data with clickable links
                 st.dataframe(
