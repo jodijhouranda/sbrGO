@@ -30,6 +30,11 @@ install_playwright()
 
 st.set_page_config(page_title="NoSBRGo - Maps Scraper", page_icon="favicon.svg", layout="wide")
 
+st.sidebar.markdown("# 🔍 NoSBR-Go")
+st.sidebar.page_link("app.py", label="🚀 Scraper", icon="🔍")
+st.sidebar.page_link("pages/1_Database_Explorer.py", label="📦 Database Explorer", icon="📂")
+st.sidebar.markdown("---")
+
 # Premium UI Styling
 st.markdown("""
 <style>

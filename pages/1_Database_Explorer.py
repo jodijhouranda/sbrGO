@@ -6,6 +6,11 @@ import time
 
 st.set_page_config(page_title="NoSBRGo - Database Explorer", page_icon="📦", layout="wide")
 
+st.sidebar.markdown("# 🔍 NoSBR-Go")
+st.sidebar.page_link("app.py", label="🚀 Scraper", icon="🔍")
+st.sidebar.page_link("pages/1_Database_Explorer.py", label="📦 Database Explorer", icon="📂")
+st.sidebar.markdown("---")
+
 # Premium UI Styling (Shared)
 st.markdown("""
 <style>
