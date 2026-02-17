@@ -9,6 +9,21 @@ import sys
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+@st.cache_resource
+def install_playwright():
+    """Install Playwright browsers if they are missing."""
+    with st.spinner("Installing Playwright browsers..."):
+        try:
+            # Only install chromium to save time/space
+            os.system("playwright install chromium")
+            return True
+        except Exception as e:
+            st.error(f"Failed to install Playwright: {e}")
+            return False
+
+# Ensure browsers are installed
+install_playwright()
+
 st.set_page_config(page_title="Google Maps Scraper", page_icon="🗺️", layout="wide")
 
 st.title("🗺️ Google Maps Scraper")
