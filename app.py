@@ -161,14 +161,13 @@ if "lat" in query_params and "lng" in query_params:
     # Auto-resolve if we have coordinates but no address yet
     if not st.session_state.resolved_address:
         loc_msg = st.empty()
-        loc_bar = st.progress(50)
-        with loc_msg:
-            st.markdown('<p style="color:#6366f1; font-size:0.8rem; font-weight:600;">🔍 Menerjemahkan Alamat...</p>', unsafe_allow_html=True)
+        loc_bar = st.progress(50, text="🔍 Menerjemahkan Alamat...")
         
+        # Resolve address
         st.session_state.resolved_address = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
         
-        loc_bar.progress(100)
-        time.sleep(0.5)
+        loc_bar.progress(100, text="✅ Alamat Berhasil Ditemukan")
+        time.sleep(0.8)
         loc_msg.empty()
         loc_bar.empty()
         st.rerun()
@@ -191,12 +190,15 @@ with main_container:
         
         # Feedback & Progress for Location
         if st.session_state.use_location_toggle and not st.session_state.resolved_address:
-            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Sedang mencari sinyal GPS & Alamat...</p>', unsafe_allow_html=True)
-            loc_prog = st.progress(30, text="Mengunci titik GPS...")
-            if st.button("🔄 Klik di sini jika GPS macet", help="Paksa browser minta izin GPS ulang"):
+            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Menunggu respon GPS browser...</p>', unsafe_allow_html=True)
+            st.progress(35, text="🛰️ Mencari sinyal GPS...")
+            if st.button("🔄 Refresh GPS", help="Minta ulang izin GPS"):
+                st.session_state.user_lat = None
+                st.session_state.user_lng = None
+                st.query_params.clear()
                 st.rerun()
         elif st.session_state.use_location_toggle and st.session_state.resolved_address:
-             st.markdown('<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Teridentifikasi</p>', unsafe_allow_html=True)
+             st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
 
     with row2_col2:
         st.write("") # Spacer
@@ -222,31 +224,39 @@ with main_container:
     # --- 3. HANDLE LOCATION LOGIC & PREVIEW ---
     if use_location != st.session_state.use_location_toggle:
         st.session_state.use_location_toggle = use_location
-        if use_location:
-            # Trigger GPS Detection Component
-            st.components.v1.html(
-                """
-                <script>
-                    navigator.geolocation.getCurrentPosition(function(pos) {
-                        const lat = pos.coords.latitude.toFixed(6);
-                        const lng = pos.coords.longitude.toFixed(6);
-                        const params = new URLSearchParams(window.parent.location.search);
-                        params.set('lat', lat);
-                        params.set('lng', lng);
-                        window.parent.location.search = params.toString();
-                    }, function(err) {
-                        window.parent.alert("Gagal GPS: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 8000});
-                </script>
-                """, height=0
-            )
-        else:
-            # Clear all location states when toggled off
+        if not use_location:
             st.session_state.user_lat = None
             st.session_state.user_lng = None
             st.session_state.resolved_address = None
             st.query_params.clear()
             st.rerun()
+
+    if use_location and not st.session_state.user_lat:
+        # Persistent GPS Detection script
+        st.components.v1.html(
+            """
+            <script>
+                function getLoc() {
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        const lat = pos.coords.latitude.toFixed(6);
+                        const lng = pos.coords.longitude.toFixed(6);
+                        const params = new URLSearchParams(window.parent.location.search);
+                        if (params.get('lat') != lat) {
+                            params.set('lat', lat);
+                            params.set('lng', lng);
+                            window.parent.location.search = params.toString();
+                        }
+                    }, function(err) {
+                        console.log("GPS Waiting: " + err.message);
+                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
+                }
+                // Initial try
+                getLoc();
+                // Keep trying every 3 seconds if not resolved
+                const interval = setInterval(getLoc, 3000);
+            </script>
+            """, height=0
+        )
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
