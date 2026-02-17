@@ -6,3 +6,5 @@ altair>=5.5.0
 openai
 requests
 streamlit-js-eval
+folium
+streamlit-folium

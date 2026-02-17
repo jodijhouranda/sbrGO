@@ -8,6 +8,8 @@ import asyncio
 import sys
 import time
 from streamlit_js_eval import streamlit_js_eval
+import folium
+from streamlit_folium import st_folium
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -200,6 +202,23 @@ def get_location_description(lat, lng):
 
     return f"{lat}, {lng}"
 
+def format_wa_link(phone):
+    """Konversi nomor telepon Indonesia (08x, +62) ke link WhatsApp wa.me."""
+    if pd.isna(phone): return None
+    # Bersihkan karakter non-digit
+    clean_phone = "".join(filter(str.isdigit, str(phone)))
+    
+    if not clean_phone: return None
+    
+    if clean_phone.startswith('08'):
+        return f"https://wa.me/62{clean_phone[1:]}"
+    elif clean_phone.startswith('62'):
+        return f"https://wa.me/{clean_phone}"
+    elif clean_phone.startswith('8'): # handle "812..."
+        return f"https://wa.me/62{clean_phone}"
+        
+    return None
+
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
@@ -365,34 +384,59 @@ if start_idx:
                 results = scraper.results
                 df = pd.DataFrame(results)
                 
-                # --- 3. MAP VISUALIZATION ---
+                # --- 3. MAP VISUALIZATION (Interactive Folium) ---
                 if show_map:
                     st.markdown("---")
                     st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Mapping Distribution</p>', unsafe_allow_html=True)
-                    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Business Locations Mapping</p>', unsafe_allow_html=True)
+                    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Interactive Competitor Map</p>', unsafe_allow_html=True)
                     
-                    # Filter rows with valid Lat/Lng and convert to numeric
                     map_df = df.copy()
                     map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
                     map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
                     map_df = map_df.dropna(subset=['latitude', 'longitude'])
                     
                     if not map_df.empty:
-                        st.map(map_df[['latitude', 'longitude']])
+                        # Center map at average location
+                        avg_lat = map_df['latitude'].mean()
+                        avg_lng = map_df['longitude'].mean()
+                        m = folium.Map(location=[avg_lat, avg_lng], zoom_start=13, control_scale=True)
+                        
+                        # Add markers with informative popups
+                        for _, row in map_df.iterrows():
+                            popup_html = f"""
+                            <div style="font-family: 'Outfit', sans-serif; min-width: 200px;">
+                                <h4 style="margin-bottom: 5px; color: #1e293b;">{row['Name']}</h4>
+                                <p style="margin: 0; color: #6366f1; font-weight: 600;">⭐ {row['Rating']} ({row['Reviews']} reviews)</p>
+                                <p style="margin-top: 5px; font-size: 0.9rem; color: #64748b;">{row.get('Kecamatan', '')} {row.get('Kabupaten', '')}</p>
+                                <a href="{row['URL']}" target="_blank" style="display: inline-block; margin-top: 10px; color: #6366f1; text-decoration: none; font-weight: 600;">Buka G-Maps ↗</a>
+                            </div>
+                            """
+                            folium.Marker(
+                                [row['latitude'], row['longitude']],
+                                popup=folium.Popup(popup_html, max_width=300),
+                                tooltip=row['Name'],
+                                icon=folium.Icon(color="indigo", icon="info-sign")
+                            ).add_to(m)
+                        
+                        st_folium(m, width="100%", height=500, returned_objects=[])
                     else:
                         st.warning("No location coordinates available to map.")
 
-                # --- 4. DATA TABLE DISPLAY ---
+                # --- 4. DATA ENRICHMENT & TABLE DISPLAY ---
+                if 'Phone' in df.columns:
+                    df['WhatsApp Link'] = df['Phone'].apply(format_wa_link)
+
                 # Define logical order: Identity -> Position -> KBLI -> Other
                 ordered_cols = [
                     "Name", "Kategori OSM",                     # Identity & Verification
+                    "WhatsApp Link", "Phone",                   # Contact
                     "Negara", "Provinsi", "Kabupaten",          # Position (Admin)
                     "Kecamatan", "Kelurahan", "Hamlet/Quarter",
                     "Kode Pos", "Jalan", "Nomor", "Address",    # Position (Detailed)
                     "Latitude", "Longitude", "URL",
                     "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
                     "Rating", "Reviews", "Operation Hours",      # Other
-                    "Latest Review", "Phone", "Website"
+                    "Latest Review", "Website"
                 ]
                 
                 # Filter out columns that might not exist (defensive)
@@ -410,6 +454,7 @@ if start_idx:
                     df,
                     column_config={
                         "URL": st.column_config.LinkColumn("G-Maps"),
+                        "WhatsApp Link": st.column_config.LinkColumn("Chat WA", help="Klik untuk chat WhatsApp langsung"),
                         "Website": st.column_config.LinkColumn("Website"),
                         "Reviews": st.column_config.NumberColumn("Reviews", format="%d"),
                         "KBLI": st.column_config.TextColumn("Kode KBLI")
