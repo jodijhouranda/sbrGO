@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from scraper import GoogleMapsScraper
+import io
+import requests
 import os
 import asyncio
 import sys
@@ -219,11 +221,28 @@ if start_idx:
                 status_text.text(message)
             
             with st.spinner("Scraping Google Maps..."):
-                # Pass user location if enabled
+                # Geolocation refining
                 lat = st.session_state.user_lat if use_location else None
                 lng = st.session_state.user_lng if use_location else None
+                
+                modified_query = search_term
+                if use_location and lat and lng:
+                    try:
+                        # Call Nominatim to get a text-based location for injection
+                        headers = {'User-Agent': 'sbrGO-App/1.0'}
+                        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=14"
+                        res = requests.get(geo_url, headers=headers, timeout=5)
+                        if res.status_code == 200:
+                            geo_data = res.json().get('address', {})
+                            loc_bias = geo_data.get('subdistrict') or geo_data.get('city_district') or geo_data.get('city') or geo_data.get('regency')
+                            if loc_bias:
+                                modified_query = f"{search_term} {loc_bias}"
+                                st.info(f"🔍 Searching near: {loc_bias}")
+                    except:
+                        pass
+
                 results = scraper.run(
-                    search_term, 
+                    modified_query, 
                     total_results, 
                     True, 
                     progress_callback=update_progress,
@@ -246,10 +265,10 @@ if start_idx:
                 
                 # Define logical order: Identity -> Position -> KBLI -> Other
                 ordered_cols = [
-                    "Name",                                     # Identity
-                    "Negara", "Provinsi", "Kabupaten",          # Position
-                    "Kecamatan", "Kelurahan", "Keterangan Lingkungan",
-                    "Kode Pos", "Address", 
+                    "Name", "Kategori OSM",                     # Identity & Verification
+                    "Negara", "Provinsi", "Kabupaten",          # Position (Admin)
+                    "Kecamatan", "Kelurahan", "Hamlet/Quarter",
+                    "Kode Pos", "Jalan", "Nomor", "Address",    # Position (Detailed)
                     "Latitude", "Longitude", "URL",
                     "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
                     "Rating", "Reviews", "Operation Hours",      # Other

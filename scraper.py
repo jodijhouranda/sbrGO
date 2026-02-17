@@ -32,9 +32,12 @@ class GoogleMapsScraper:
                     "Provinsi": address.get('state') or "N/A",
                     "Kabupaten": address.get('city') or address.get('regency') or address.get('county') or "N/A",
                     "Kecamatan": address.get('district') or address.get('subdistrict') or address.get('city_district') or "N/A",
-                    "Kelurahan": address.get('village') or address.get('suburb') or address.get('neighbourhood') or "N/A",
-                    "Keterangan Lingkungan": address.get('neighbourhood') or address.get('quarter') or "N/A",
-                    "Kode Pos": address.get('postcode') or "N/A"
+                    "Kelurahan": address.get('village') or address.get('suburb') or "N/A",
+                    "Hamlet/Quarter": address.get('hamlet') or address.get('quarter') or address.get('neighbourhood') or "N/A",
+                    "Jalan": address.get('road') or "N/A",
+                    "Nomor": address.get('house_number') or "N/A",
+                    "Kode Pos": address.get('postcode') or "N/A",
+                    "Kategori OSM": data.get('type') or address.get('amenity') or address.get('shop') or address.get('office') or "N/A"
                 }
         except Exception as e:
             print(f"Geocoding error: {e}")
@@ -48,15 +51,10 @@ class GoogleMapsScraper:
             page = context.new_page()
 
             # 1. Search and Scroll
-            # Construct URL with location bias if coordinates provided
-            if user_lat and user_lng:
-                # Format: https://www.google.com/maps/search/{query}/@{lat},{lng},15z
-                search_url = f"https://www.google.com/maps/search/{search_term}/@{user_lat},{user_lng},15z"
-                print(f"Using location-biased search: {search_url}")
-            else:
-                search_url = "https://www.google.com/maps"
-
-            page.goto(search_url, timeout=60000)
+            # Construct URL. We still go to Maps first, but we'll use the query.
+            # Using the @lat,lng in URL can sometimes force Google to a specific (and wrong) context.
+            # We prefer searching with the injected text location for maximum accuracy.
+            page.goto("https://www.google.com/maps", timeout=60000)
             page.wait_for_timeout(2000)
 
             # Accept cookies if any
@@ -65,24 +63,21 @@ class GoogleMapsScraper:
             except:
                 pass
 
-            # If we used a direct search URL, we might already be on results page
-            # Otherwise, we need to type and search
-            if not (user_lat and user_lng):
-                print("Performing standard search...")
-                try:
-                    page.wait_for_selector('input#searchboxinput', timeout=10000)
-                    page.fill('input#searchboxinput', search_term)
-                except:
-                    print("Standard selector failed, trying fallback...")
-                    page.wait_for_selector('input[name="q"]', timeout=10000)
-                    page.fill('input[name="q"]', search_term)
-                
-                page.wait_for_timeout(1000)
+            print(f"Searching for: {search_term}")
+            try:
+                page.wait_for_selector('input#searchboxinput', timeout=10000)
+                page.fill('input#searchboxinput', search_term)
+                page.wait_for_timeout(500)
+                page.keyboard.press("Enter")
+            except:
+                print("Standard selector failed, trying fallback...")
+                page.wait_for_selector('input[name="q"]', timeout=10000)
+                page.fill('input[name="q"]', search_term)
                 page.keyboard.press("Enter")
             
             # Wait for results to load
             print("Waiting for results...")
-            page.wait_for_selector('div[role="feed"]', timeout=15000)
+            page.wait_for_selector('div[role="feed"]', timeout=20000)
             
             # Scroll to load results
             urls = set()
@@ -125,7 +120,8 @@ class GoogleMapsScraper:
                     break
 
             # Limit to requested total
-            urls = list(urls)[:total_results]
+            urls_list = list(urls)
+            urls = urls_list[:total_results]
             print(f"Collected {len(urls)} URLs. Starting detail extraction...")
 
             # 2. Extract Details for each URL
@@ -185,7 +181,7 @@ class GoogleMapsScraper:
             - kabupaten: The Regency/City (Kabupaten/Kota).
             - kecamatan: The District (Kecamatan).
             - kelurahan: The Sub-district/Village (Kelurahan/Desa).
-            - keterangan_lingkungan: Neighbourhood/Environment details (Keterangan Lingkungan).
+            - hamlet_quarter: Neighbourhood/Environment details (Dusun/Blok/RW).
             - kode_pos: The Postal Code.
 
             Format the output as a clean JSON object.
@@ -217,7 +213,7 @@ class GoogleMapsScraper:
                     "Kabupaten": gpt_data.get("kabupaten", item.get("Kabupaten", "N/A")),
                     "Kecamatan": gpt_data.get("kecamatan", item.get("Kecamatan", "N/A")),
                     "Kelurahan": gpt_data.get("kelurahan", item.get("Kelurahan", "N/A")),
-                    "Keterangan Lingkungan": gpt_data.get("keterangan_lingkungan", item.get("Keterangan Lingkungan", "N/A")),
+                    "Hamlet/Quarter": gpt_data.get("hamlet_quarter", item.get("Hamlet/Quarter", "N/A")),
                     "Kode Pos": gpt_data.get("kode_pos", item.get("Kode Pos", "N/A"))
                 })
                 
