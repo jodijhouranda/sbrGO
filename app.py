@@ -177,8 +177,16 @@ with main_container:
         location_input = st.text_input("📍 Lokasi / Wilayah", 
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
                                       placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
+        
+        # Feedback & Fallback for Location
+        if st.session_state.use_location_toggle and not st.session_state.resolved_address:
+            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Sedang mencari sinyal GPS & Alamat...</p>', unsafe_allow_html=True)
+            if st.button("🔄 Klik di sini jika GPS macet", help="Paksa browser minta izin GPS ulang"):
+                st.rerun()
+
     with row2_col2:
-        use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle, key="loc_toggle")
+        st.write("") # Spacer
+        use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle, key="loc_toggle", help="Deteksi otomatis lokasi kamu")
     
     st.markdown("---")
     
@@ -228,7 +236,6 @@ with main_container:
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
-    if not target_loc: target_loc = ""
     
     if search_term and target_loc:
         modified_query = f"{search_term} di sekitar {target_loc}"
@@ -240,7 +247,7 @@ with main_container:
     st.markdown("---")
     
     # 3. EXTRACTION TRIGGER & PREVIEW
-    if modified_query:
+    if search_term and target_loc:
         st.markdown(f"""
             <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
                         border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-bottom: 15px; 
@@ -251,8 +258,8 @@ with main_container:
         """, unsafe_allow_html=True)
 
     is_detecting = use_location and not st.session_state.resolved_address
-    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Tunggu lokasi..."
-    start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting)
+    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Sedang Mencari Lokasi..."
+    start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting or not search_term)
 
 if start_idx:
     if not search_term:
