@@ -191,12 +191,7 @@ with main_container:
         # Feedback & Progress for Location
         if st.session_state.use_location_toggle and not st.session_state.resolved_address:
             st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Menunggu respon GPS browser...</p>', unsafe_allow_html=True)
-            st.progress(35, text="🛰️ Mencari sinyal GPS...")
-            if st.button("🔄 Refresh GPS", help="Minta ulang izin GPS"):
-                st.session_state.user_lat = None
-                st.session_state.user_lng = None
-                st.query_params.clear()
-                st.rerun()
+            st.progress(35, text="🛰️ Klik tombol di bawah untuk ambil lokasi")
         elif st.session_state.use_location_toggle and st.session_state.resolved_address:
              st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
 
@@ -232,30 +227,45 @@ with main_container:
             st.rerun()
 
     if use_location and not st.session_state.user_lat:
-        # Persistent GPS Detection script
+        # User-Triggered GPS Detection component
         st.components.v1.html(
             """
+            <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+                <button onclick="getLoc()" style="
+                    background: #6366f1;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2);
+                    font-family: sans-serif;
+                    font-size: 0.9rem;
+                    width: 100%;
+                ">📍 Ambil Lokasi GPS (Sentuh/Klik Di Sini)</button>
+            </div>
             <script>
                 function getLoc() {
+                    const btn = document.querySelector('button');
+                    btn.innerText = "⌛ Menghubungkan...";
+                    btn.disabled = true;
+                    
                     navigator.geolocation.getCurrentPosition(function(pos) {
                         const lat = pos.coords.latitude.toFixed(6);
                         const lng = pos.coords.longitude.toFixed(6);
                         const params = new URLSearchParams(window.parent.location.search);
-                        if (params.get('lat') != lat) {
-                            params.set('lat', lat);
-                            params.set('lng', lng);
-                            window.parent.location.search = params.toString();
-                        }
+                        params.set('lat', lat);
+                        params.set('lng', lng);
+                        window.parent.location.search = params.toString();
                     }, function(err) {
-                        console.log("GPS Waiting: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
+                        btn.innerText = "📍 Gagal: " + err.message + " (Klik Lagi)";
+                        btn.disabled = false;
+                        alert("Izin GPS: " + err.message + ". Pastikan GPS aktif.");
+                    }, {enableHighAccuracy: true, timeout: 8000, maximumAge: 0});
                 }
-                // Initial try
-                getLoc();
-                // Keep trying every 3 seconds if not resolved
-                const interval = setInterval(getLoc, 3000);
             </script>
-            """, height=0
+            """, height=60
         )
 
     # Construct final query
