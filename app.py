@@ -220,14 +220,12 @@ if "lat" in query_params and "lng" in query_params:
 # Unified Main UI layout
 main_container = st.container(border=True)
 with main_container:
-    # 1. Search Details (Business Name & Location)
-    row1_col1, row1_col2 = st.columns([3, 1])
-    with row1_col1:
-        search_term = st.text_input("🔍 Nama Bisnis / Kategori", placeholder="e.g., Coffee Shop, Bengkel, PT...")
-    with row1_col2:
-        total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
+    # 1. Search Details (Business Name -> Location -> Limit)
+    # Row 1: Business Name
+    search_term = st.text_input("🔍 Nama Bisnis / Kategori", placeholder="e.g., Coffee Shop, Bengkel, PT...")
     
-    row2_col1 = st.columns(1)[0]
+    # Row 2: Location & Limit
+    row2_col1, row2_col2 = st.columns([3, 1])
     with row2_col1:
         location_input = st.text_input("📍 Lokasi / Wilayah", 
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
@@ -238,6 +236,9 @@ with main_container:
                  st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Terkunci: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
             else:
                  st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">🛰️ Sedang mengunci koordinat...</p>', unsafe_allow_html=True)
+                 
+    with row2_col2:
+        total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
     
     st.markdown("---")
     
