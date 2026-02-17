@@ -32,18 +32,20 @@ def get_location_description(lat, lng):
     """Get a human-readable address from lat/lng using Reverse Geocoding."""
     try:
         url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-        headers = {'User-Agent': 'NoSBRGo/1.0'}
+        headers = {'User-Agent': 'NoSBRGo/1.1'}
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
             addr = data.get('address', {})
             
-            # Priority components for a concise but useful address
+            # Detailed administrative parsing
             road = addr.get('road')
-            village = addr.get('village') or addr.get('hamlet') or addr.get('suburb')
-            city = addr.get('city') or addr.get('town') or addr.get('city_district') or addr.get('county')
+            village = addr.get('village') or addr.get('hamlet')
+            suburb = addr.get('suburb') or addr.get('neighbourhood')
+            city = addr.get('city') or addr.get('town') or addr.get('city_district')
+            county = addr.get('county')
             
-            parts = [p for p in [road, village, city] if p]
+            parts = [p for p in [road, village, suburb, city, county] if p]
             return ", ".join(parts) if parts else data.get('display_name')
         return None
     except:
@@ -209,10 +211,10 @@ def show_scraper_page():
         with row2_col2:
             total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
         
-        st.markdown("---")
         conf_col1, conf_col2 = st.columns(2)
         with conf_col1:
             use_gpt = st.toggle("AI KBLI Classification", value=True)
+            # Use top-level secret as requested
             secret_api_key = st.secrets.get("OPENAI_API_KEY")
             if secret_api_key:
                 api_key = str(secret_api_key).strip()
@@ -265,6 +267,8 @@ def show_scraper_page():
     btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Sedang Mencari Lokasi..."
     start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting or not search_term)
 
+    if 'last_results' not in st.session_state: st.session_state.last_results = None
+
     if start_idx:
         if not search_term:
             st.error("Please enter a search term.")
@@ -293,27 +297,32 @@ def show_scraper_page():
                         with st.spinner("AI is analyzing KBLI..."):
                             scraper.process_with_gpt(progress_callback=update_progress)
                     
-                    df = pd.DataFrame(scraper.results)
-                    
-                    if show_map:
-                        map_df = df.copy()
-                        map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
-                        map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
-                        map_df = map_df.dropna(subset=['latitude', 'longitude'])
-                        if not map_df.empty:
-                            m = folium.Map(location=[map_df['latitude'].mean(), map_df['longitude'].mean()], zoom_start=13)
-                            for _, row in map_df.iterrows():
-                                folium.Marker([row['latitude'], row['longitude']], popup=row['Name']).add_to(m)
-                            st_folium(m, width=1200, height=400)
-
-                    # Export Logic
-                    cols = ["Name", "Rating", "Reviews", "Address", "Phone", "Website", "WhatsApp Link", "KBLI", "Nama Resmi KBLI"]
-                    st.dataframe(df[[c for c in cols if c in df.columns]], use_container_width=True)
-                    
-                    if st.button("💾 Save to Database (TiDB)", use_container_width=True):
-                        save_to_tidb(df)
+                    st.session_state.last_results = scraper.results
+                    st.rerun() # Refresh to show results persistantly
             except Exception as e:
                 st.error(f"Error: {e}")
+
+    # Display results if they exist in session state
+    if st.session_state.last_results:
+        df = pd.DataFrame(st.session_state.last_results)
+        
+        if show_map:
+            map_df = df.copy()
+            map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
+            map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
+            map_df = map_df.dropna(subset=['latitude', 'longitude'])
+            if not map_df.empty:
+                m = folium.Map(location=[map_df['latitude'].mean(), map_df['longitude'].mean()], zoom_start=13)
+                for _, row in map_df.iterrows():
+                    folium.Marker([row['latitude'], row['longitude']], popup=row['Name']).add_to(m)
+                st_folium(m, width=1200, height=400, key="results_map")
+
+        # Export Logic
+        cols = ["Name", "Rating", "Reviews", "Address", "Phone", "Website", "WhatsApp Link", "KBLI", "Nama Resmi KBLI"]
+        st.dataframe(df[[c for c in cols if c in df.columns]], use_container_width=True)
+        
+        if st.button("💾 Save to Database (TiDB)", use_container_width=True):
+            save_to_tidb(df)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ using Playwright and Streamlit by JJS</p>", unsafe_allow_html=True)
