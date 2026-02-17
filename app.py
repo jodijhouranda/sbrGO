@@ -123,85 +123,80 @@ st.markdown("""
 st.markdown('<div class="logo-container"><p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p></div>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
-st.sidebar.header("Configuration")
-
-use_gpt = st.sidebar.checkbox("GPT Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
-
-# Try to get API key from secrets (support multiple formats)
-secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
-
-if secret_api_key:
-    st.sidebar.success("API Key Loaded")
-    api_key = str(secret_api_key).strip()
-else:
-    api_key_input = st.sidebar.text_input("OpenAI API Key", type="password")
-    api_key = api_key_input.strip() if api_key_input else None
-
-st.sidebar.markdown("---")
-with st.sidebar.expander("Usage Guide"):
-    st.markdown("""
-    - **Search**: Enter business name + city.
-    - **Limit**: Strictly capped at 20 for stability.
-    - **Results**: Export to CSV or Excel.
-    """)
-
 # Geolocation state
 if 'user_lat' not in st.session_state:
     st.session_state.user_lat = None
 if 'user_lng' not in st.session_state:
     st.session_state.user_lng = None
 
-# Main UI layout
-with st.container(border=True):
-    col1, col2 = st.columns([3, 1])
-    with col1:
+# Unified Main UI layout
+main_container = st.container(border=True)
+with main_container:
+    # 1. Search & Limit
+    row1_col1, row1_col2 = st.columns([3, 1])
+    with row1_col1:
         search_term = st.text_input("Search Query", placeholder="e.g., PT or Coffee shop")
-    with col2:
+    with row1_col2:
         total_results = st.number_input("Limit", min_value=1, max_value=20, value=5)
     
-    # Geolocation Toggle
-    use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=False)
+    st.markdown("---")
     
-    if use_location:
-        # Custom HTML/JS to get geolocation
-        st.components.v1.html(
-            """
-            <div id="location-status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">
-                Detecting location...
-            </div>
-            <script>
-                if ("geolocation" in navigator) {
-                    navigator.geolocation.getCurrentPosition(function(position) {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        document.getElementById('location-status').innerHTML = "📍 Location detected: " + lat.toFixed(4) + ", " + lng.toFixed(4);
-                        
-                        // Send back to Streamlit via URL (only if changed significantly)
-                        const params = new URLSearchParams(window.parent.location.search);
-                        if (params.get('lat') != lat.toFixed(6)) {
-                            params.set('lat', lat.toFixed(6));
-                            params.set('lng', lng.toFixed(6));
-                            window.parent.location.search = params.toString();
-                        }
-                    }, function(error) {
-                        document.getElementById('location-status').innerHTML = "❌ Error: " + error.message;
-                    });
-                } else {
-                    document.getElementById('location-status').innerHTML = "❌ Geolocation not supported";
-                }
-            </script>
-            """,
-            height=30
-        )
+    # 2. Configuration (Previously in Sidebar)
+    conf_col1, conf_col2 = st.columns(2)
+    with conf_col1:
+        use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
+        # Try to get API key from secrets
+        secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
         
-        # Pull coordinates from URL query params
-        query_params = st.query_params
-        if "lat" in query_params and "lng" in query_params:
-            st.session_state.user_lat = query_params["lat"]
-            st.session_state.user_lng = query_params["lng"]
-            st.success(f"Lokasi terkunci: {st.session_state.user_lat}, {st.session_state.user_lng}")
+        if secret_api_key:
+            st.success("✅ OpenAI API Key Loaded")
+            api_key = str(secret_api_key).strip()
+        else:
+            api_key_input = st.text_input("OpenAI API Key", type="password")
+            api_key = api_key_input.strip() if api_key_input else None
+    
+    with conf_col2:
+        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=False)
+        if use_location:
+            # Custom HTML/JS to get geolocation
+            st.components.v1.html(
+                """
+                <div id="location-status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">
+                    Detecting location...
+                </div>
+                <script>
+                    if ("geolocation" in navigator) {
+                        navigator.geolocation.getCurrentPosition(function(position) {
+                            const lat = position.coords.latitude;
+                            const lng = position.coords.longitude;
+                            document.getElementById('location-status').innerHTML = "📍 Location detected: " + lat.toFixed(4) + ", " + lng.toFixed(4);
+                            
+                            const params = new URLSearchParams(window.parent.location.search);
+                            if (params.get('lat') != lat.toFixed(6)) {
+                                params.set('lat', lat.toFixed(6));
+                                params.set('lng', lng.toFixed(6));
+                                window.parent.location.search = params.toString();
+                            }
+                        }, function(error) {
+                            document.getElementById('location-status').innerHTML = "❌ Error: " + error.message;
+                        });
+                    } else {
+                        document.getElementById('location-status').innerHTML = "❌ Geolocation not supported";
+                    }
+                </script>
+                """,
+                height=30
+            )
+            
+            # Pull coordinates from URL query params
+            query_params = st.query_params
+            if "lat" in query_params and "lng" in query_params:
+                st.session_state.user_lat = query_params["lat"]
+                st.session_state.user_lng = query_params["lng"]
+                st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
 
-    start_idx = st.button("Start Extraction", use_container_width=True)
+    st.markdown("---")
+    start_idx = st.button("🚀 Start Extraction", use_container_width=True)
 
 if start_idx:
     if not search_term:
@@ -228,16 +223,20 @@ if start_idx:
                 modified_query = search_term
                 if use_location and lat and lng:
                     try:
-                        # Call Nominatim to get a text-based location for injection
+                        # Call Nominatim to get detailed location
                         headers = {'User-Agent': 'sbrGO-App/1.0'}
-                        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=14"
+                        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
                         res = requests.get(geo_url, headers=headers, timeout=5)
                         if res.status_code == 200:
-                            geo_data = res.json().get('address', {})
-                            loc_bias = geo_data.get('subdistrict') or geo_data.get('city_district') or geo_data.get('city') or geo_data.get('regency')
-                            if loc_bias:
-                                modified_query = f"{search_term} {loc_bias}"
-                                st.info(f"🔍 Searching near: {loc_bias}")
+                            data = res.json()
+                            addr = data.get('address', {})
+                            jalan = addr.get('road') or ""
+                            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or ""
+                            
+                            if jalan or kabupaten:
+                                loc_desc = f"{jalan} {kabupaten}".strip()
+                                modified_query = f"{search_term} di sekitar {loc_desc}"
+                                st.info(f"🔍 Mencari: **{modified_query}**")
                     except:
                         pass
 
@@ -251,18 +250,33 @@ if start_idx:
                 )
             
             if results:
-                # Always enrich with official geographic data
-                with st.spinner("Enriching geographic data..."):
+                # 1. Enrichment with Administrative Data
+                with st.spinner("Enriching with Administrative Data..."):
                     scraper.enrich_results(progress_callback=update_progress)
 
+                # 2. AI (GPT) Analysis
                 if use_gpt:
                     with st.spinner("AI is analyzing KBLI..."):
                         scraper.process_with_gpt(progress_callback=update_progress)
                 
                 results = scraper.results
-                
                 df = pd.DataFrame(results)
                 
+                # --- 3. MAP VISUALIZATION ---
+                st.markdown("---")
+                st.markdown("### 🗺️ Business Locations Mapping")
+                # Filter rows with valid Lat/Lng and convert to numeric
+                map_df = df.copy()
+                map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
+                map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
+                map_df = map_df.dropna(subset=['latitude', 'longitude'])
+                
+                if not map_df.empty:
+                    st.map(map_df[['latitude', 'longitude']])
+                else:
+                    st.warning("No location coordinates available to map.")
+
+                # --- 4. DATA TABLE DISPLAY ---
                 # Define logical order: Identity -> Position -> KBLI -> Other
                 ordered_cols = [
                     "Name", "Kategori OSM",                     # Identity & Verification
