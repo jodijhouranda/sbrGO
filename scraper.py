@@ -128,15 +128,6 @@ class GoogleMapsScraper:
         
         return self.results
 
-    def process_with_gpt(self, api_key=None, progress_callback=None):
-        if api_key:
-            self.api_key = api_key
-            self.client = OpenAI(api_key=api_key)
-        
-        if not self.client:
-            print("OpenAI client not initialized. Skipping GPT enhancement.")
-            return
-
     def enrich_results(self, progress_callback=None):
         """Perform reverse geocoding for all results."""
         print(f"Enriching {len(self.results)} results with Geocoding...")
