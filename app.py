@@ -144,13 +144,15 @@ def get_location_description(lat, lng):
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
-if 'use_location' not in st.session_state: st.session_state.use_location = False
+if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
 if "lat" in query_params and "lng" in query_params:
-    st.session_state.user_lat = query_params["lat"]
-    st.session_state.user_lng = query_params["lng"]
+    st.session_state.user_lat = str(query_params["lat"])
+    st.session_state.user_lng = str(query_params["lng"])
+    # If coordinates are in URL, auto-enable the toggle
+    st.session_state.use_location_toggle = True
 
 # Unified Main UI layout
 main_container = st.container(border=True)
@@ -164,15 +166,7 @@ with main_container:
     
     st.markdown("---")
     
-    # --- 2. PRE-CALCULATE MODIFIED QUERY ---
-    modified_query = search_term
-    if st.session_state.use_location and st.session_state.user_lat and st.session_state.user_lng:
-        with st.spinner("📍 Resolving local address..."):
-            loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-            if loc_description:
-                modified_query = f"{search_term} di sekitar {loc_description}"
-    
-    # 3. Configuration
+    # 2. Configuration
     conf_col1, conf_col2 = st.columns(2)
     with conf_col1:
         use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
@@ -187,51 +181,57 @@ with main_container:
         
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
     
+    # --- 3. INITIALIZE SEARCH QUERY ---
+    modified_query = search_term
+    
     with conf_col2:
-        # Use session_state to track toggle
-        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location, key="loc_toggle")
-        st.session_state.use_location = use_location
+        # Toggle with key and session state for persistence
+        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location_toggle, key="loc_toggle")
+        st.session_state.use_location_toggle = use_location
         
         if use_location:
-            # Custom HTML/JS to get geolocation
-            st.components.v1.html(
-                """
-                <div id="location-status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">
-                    Detecting location...
-                </div>
-                <script>
-                    if ("geolocation" in navigator) {
-                        navigator.geolocation.getCurrentPosition(function(position) {
-                            const lat = position.coords.latitude;
-                            const lng = position.coords.longitude;
-                            document.getElementById('location-status').innerHTML = "📍 Location detected: " + lat.toFixed(4) + ", " + lng.toFixed(4);
-                            
+            # --- 3. CALCULATE & DISPLAY MODIFIED QUERY ---
+            if st.session_state.user_lat and st.session_state.user_lng:
+                # Resolve address if coordinates available
+                with st.spinner("🔍 Sedang mengolah alamat..."):
+                    loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+                    if loc_description:
+                        modified_query = f"{search_term} di sekitar {loc_description}"
+                        st.markdown(f"""
+                            <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)); border-left: 5px solid #6366f1; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);">
+                                <p style="color:#4338ca; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 5px 0;">🎯 Targeting Keyword:</p>
+                                <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
+                
+                # Device status footer
+                st.components.v1.html(
+                    f"""<div style="color: #94a3b8; font-size: 0.7rem; font-family: sans-serif; text-align:right;">GPS: {st.session_state.user_lat}, {st.session_state.user_lng}</div>""", 
+                    height=20
+                )
+            else:
+                # Trigger JS detection
+                st.components.v1.html(
+                    """
+                    <div id="status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">Detecting location...</div>
+                    <script>
+                        navigator.geolocation.getCurrentPosition(function(pos) {
+                            const lat = pos.coords.latitude.toFixed(6);
+                            const lng = pos.coords.longitude.toFixed(6);
                             const params = new URLSearchParams(window.parent.location.search);
-                            if (params.get('lat') != lat.toFixed(6)) {
-                                params.set('lat', lat.toFixed(6));
-                                params.set('lng', lng.toFixed(6));
+                            if (params.get('lat') != lat) {
+                                params.set('lat', lat);
+                                params.set('lng', lng);
                                 window.parent.location.search = params.toString();
                             }
-                        }, function(error) {
-                            document.getElementById('location-status').innerHTML = "❌ Error: " + error.message;
+                        }, function(err) {
+                            document.getElementById('status').innerHTML = "❌ GPS Error: " + err.message;
                         });
-                    } else {
-                        document.getElementById('location-status').innerHTML = "❌ Geolocation not supported";
-                    }
-                </script>
-                """,
-                height=30
-            )
-            
-            if modified_query != search_term:
-                st.markdown(f"""
-                    <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)); border-left: 5px solid #6366f1; padding: 15px; border-radius: 10px; margin-top: 15px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);">
-                        <p style="color:#4338ca; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 5px 0;">🎯 Targeting Keyword:</p>
-                        <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
-                    </div>
-                """, unsafe_allow_html=True)
-            elif st.session_state.user_lat:
-                 st.info(f"📍 Menunggu resolusi alamat GPS...")
+                    </script>
+                    """, height=30
+                )
 
     st.markdown("---")
     start_idx = st.button("🚀 Start Extraction", use_container_width=True)
