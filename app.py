@@ -38,12 +38,12 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 6rem;
-        font-weight: 800;
+        font-size: 10rem;
+        font-weight: 900;
         margin-bottom: 0px;
-        letter-spacing: -3px;
-        line-height: 1;
-        text-shadow: 0 10px 40px rgba(99, 102, 241, 0.15);
+        letter-spacing: -6px;
+        line-height: 0.85;
+        text-shadow: 0 20px 60px rgba(99, 102, 241, 0.2);
     }
     
     .title-no { color: #6366f1; }
@@ -53,18 +53,21 @@ st.markdown("""
     .logo-container {
         display: flex;
         align-items: center;
-        gap: 15px;
-        margin-top: -40px;
-        margin-bottom: 20px;
+        gap: 20px;
+        margin-top: -60px;
+        margin-bottom: 10px;
+        padding-top: 2rem;
     }
     
     .subtitle {
         color: #94a3b8;
-        font-size: 0.85rem;
-        font-weight: 400;
-        letter-spacing: 0.5px;
-        margin-top: -15px;
-        margin-bottom: 2.5rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-top: -5px;
+        margin-bottom: 3.5rem;
+        opacity: 0.8;
     }
     
     /* Card-like containers */
