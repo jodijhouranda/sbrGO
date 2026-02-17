@@ -122,7 +122,8 @@ class GoogleMapsScraper:
             Analyze the following business information from Google Maps and provide structured data in JSON format.
             Business Name: {item['Name']}
             Address: {item['Address']}
-            Establishment/Description: {item['Establishment']}
+            Operation Hours: {item['Operation Hours']}
+            Latest Review Snippet: {item['Latest Review']}
             
             Return the following fields:
             - kbli: Predict the 5-digit KBLI 2020 code (Indonesian Standard Industrial Classification).
@@ -191,124 +192,116 @@ class GoogleMapsScraper:
 
         # Rating & Reviews
         try:
-            # Look for the section with stars
-            # usually has aria-label like "4.5 stars 100 reviews"
-            rating_selector = 'div.F7nice' 
-            request_text = page.locator(rating_selector).first.text_content()
-            # Parse simplistic "4.5(200)"
-            rating = request_text.split('(')[0].strip() if '(' in request_text else request_text
-            review_count = request_text.split('(')[1].replace(')', '').strip() if '(' in request_text else "0"
+            # More robust selector for rating and review count
+            # Often in a div with role="img" and aria-label containing rating/reviews
+            # Or in div.F7nice
+            rating_element = page.locator('div.F7nice').first
+            if rating_element.count() > 0:
+                request_text = rating_element.text_content()
+                # Parse "4.5 (200)"
+                if '(' in request_text:
+                    rating = request_text.split('(')[0].strip()
+                    review_count = request_text.split('(')[1].replace(')', '').replace(',', '').strip()
+                else:
+                    rating = request_text.strip()
+                    review_count = "0"
+            else:
+                # Try aria-label fallback for hidden elements
+                stars_label = page.locator('span[aria-label*="stars"]').first
+                if stars_label.count() > 0:
+                    label = stars_label.get_attribute("aria-label")
+                    # "4.5 stars 100 reviews"
+                    rating = label.split(' ')[0]
+                    review_count = label.split('stars ')[1].split(' ')[0] if 'stars ' in label else "0"
+                else:
+                    rating = "N/A"
+                    review_count = "N/A"
         except:
             rating = "N/A"
             review_count = "N/A"
 
         # Address, Website, Phone
-        # These are usually in buttons with specific data-item-id or aria-labels
-        # We can look for buttons with specific icons or text patterns
-        
         address = "N/A"
         website = "N/A"
         phone = "N/A"
 
-        # Helper to find text in buttons
         try:
-            # Address usually starts with button that has data-item-id="address"
             address_btn = page.locator('button[data-item-id="address"]')
             if address_btn.count() > 0:
                 address = address_btn.first.get_attribute("aria-label").replace("Address: ", "")
         except: pass
 
         try:
-             # Phone usually data-item-id starts with "phone"
              phone_btn = page.locator('button[data-item-id^="phone"]')
              if phone_btn.count() > 0:
                  phone = phone_btn.first.get_attribute("aria-label").replace("Phone: ", "")
         except: pass
 
         try:
-            # Website
             website_btn = page.locator('a[data-item-id="authority"]')
             if website_btn.count() > 0:
                 website = website_btn.first.get_attribute("href")
+        except: pass
+
+        # Extract Operation Hours (New)
+        operation_hours = "N/A"
+        try:
+            # Look for hours button/section
+            hours_btn = page.locator('div[aria-label*="hours"], button[aria-label*="hours"]').first
+            if hours_btn.count() > 0:
+                # Try to get the raw text first (often says "Open now · 08.00–17.00")
+                operation_hours = hours_btn.text_content().strip()
+                # If it's just a summary, we could potentially click to get more, 
+                # but let's start with the visible text which is usually what users want.
+        except: pass
+
+        # Extract Latest Review Time (New)
+        latest_review_time = "N/A"
+        try:
+            # Look for review snippets usually shown on the main page
+            # These are often in div.wiUu6 or aria-labels
+            review_snippet = page.locator('div[role="region"] div.jftiEf').first
+            if review_snippet.count() > 0:
+                # The relative time is usually in a span or specific class like .rS69Wb
+                time_el = review_snippet.locator('span.rS69Wb').first
+                if time_el.count() > 0:
+                    latest_review_time = time_el.text_content().strip()
         except: pass
 
         # Extract Latitude and Longitude from URL
         latitude = "N/A"
         longitude = "N/A"
         try:
-            # Wait a bit longer for potential URL updates
             page.wait_for_timeout(1000)
             current_url = page.url
-            
-            # 1. Try to find coordinates in the URL (@lat,lng)
             match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', current_url)
             if match:
                 latitude = match.group(1)
                 longitude = match.group(2)
             
-            # 2. If URL doesn't have it, or it seems to be the center (often found in search result pages),
-            # try to find it in the page source (common for specific place pages)
             if latitude == "N/A":
-                # Look for [null,null,lat,lng] pattern in script tags
-                # This is a common pattern in Google Maps initialization data
                 html = page.content()
                 match = re.search(r'\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]', html)
                 if match:
                     latitude = match.group(1)
                     longitude = match.group(2)
 
-            # 3. Fallback: Directions link (often has very precise coordinates)
             if latitude == "N/A":
                 directions_btn = page.locator('a[href*="/dir/"]').first
                 if directions_btn.count() > 0:
                     dir_url = directions_btn.get_attribute("href")
-                    # Pattern in directions url is often .../lat,lng/...
                     match = re.search(r'/(-?\d+\.\d+),(-?\d+\.\d+)/', dir_url)
                     if match:
                         latitude = match.group(1)
                         longitude = match.group(2)
-            
-            # 4. Fallback: Meta image link
-            if latitude == "N/A":
-                meta_image = page.locator('meta[property="og:image"]').first.get_attribute("content")
-                if meta_image:
-                     match = re.search(r'center=(-?\d+\.\d+)%2C(-?\d+\.\d+)', meta_image)
-                     if match:
-                         latitude = match.group(1)
-                         longitude = match.group(2)
-        except: pass
-
-        # Extract Status (Open, Closed, etc.)
-        status = "N/A"
-        try:
-            # Often in a div with specific indicators or aria-label
-            # Try to find text that looks like status
-            status_element = page.locator('div[aria-label*="hours"], .Z_C1G, .U66pCc').first
-            if status_element.count() > 0:
-                status = status_element.text_content().split('·')[0].strip()
-        except: pass
-
-        # Extract Establishment / Description
-        about_info = "N/A"
-        try:
-            # Check for a specific "About" summary or description
-            # Sometimes it's in the metadata section
-            desc_element = page.locator('div.PYvS7b').first # Example class for summary
-            if desc_element.count() > 0:
-                about_info = desc_element.text_content().strip()
-            else:
-                # Try finding a button that leads to About or has descriptive aria-label
-                about_btn = page.locator('button[aria-label*="About"]').first
-                if about_btn.count() > 0:
-                     about_info = about_btn.get_attribute("aria-label")
         except: pass
 
         self.results.append({
             "Name": name,
             "Rating": rating,
             "Reviews": review_count,
-            "Status": status,
-            "Establishment": about_info,
+            "Operation Hours": operation_hours,
+            "Latest Review": latest_review_time,
             "Address": address,
             "Phone": phone,
             "Website": website,
