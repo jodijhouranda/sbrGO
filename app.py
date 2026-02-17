@@ -38,12 +38,12 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 12rem; /* Finding the perfect middle ground */
-        font-weight: 900;
+        font-size: 5rem; /* Balanced size: clear but not overwhelming */
+        font-weight: 800;
         margin-bottom: 0px;
-        letter-spacing: -3px !important; 
-        line-height: 0.9 !important;
-        text-shadow: 0 20px 60px rgba(99, 102, 241, 0.15);
+        letter-spacing: normal !important; /* Strictly prevent overlapping */
+        line-height: 1.2 !important;
+        text-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
         white-space: nowrap;
     }
     
@@ -55,9 +55,9 @@ st.markdown("""
         display: flex;
         align-items: center;
         width: 100%;
-        margin-top: -60px;
-        margin-bottom: 10px;
-        padding-top: 3rem;
+        margin-top: -30px;
+        margin-bottom: 15px;
+        padding-top: 1.5rem;
         overflow: visible !important;
     }
     
