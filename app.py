@@ -128,13 +128,13 @@ st.markdown('<p class="subtitle">Scrape business data from Google Maps in second
 @st.cache_data(show_spinner=False)
 def get_location_description(lat, lng):
     """
-    Mengambil data administratif (Kelurahan, Kecamatan, Kab/Kota) secara hierarkis.
-    Tidak peduli ada nama jalan atau tidak, area admin harus muncul.
+    Mengambil data alamat lengkap & administratif Indonesia (Hierarkis).
+    Mencakup: Gedung/Tempat, Jalan, Kelurahan, Kecamatan, Kab/Kota.
     """
     if not lat or not lng: return None
     
-    headers = {'User-Agent': 'sbrGO-App/1.0'}
-    # Gunakan zoom 18 untuk akurasi titik, tapi kita ambil data adminnya
+    headers = {'User-Agent': 'NoSBRGo-App/1.1'}
+    # addressdetails=1 & zoom=18 memberikan detail level jalan + POI
     url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
     
     try:
@@ -143,56 +143,61 @@ def get_location_description(lat, lng):
             data = res.json()
             addr = data.get('address', {})
             
-            # --- BAGIAN 1: JALAN (Opsional) ---
-            # Kita cek, kalau ada ya syukur, kalau gak ada ya skip
-            jalan = (addr.get('road') or addr.get('street') or 
-                     addr.get('pedestrian') or addr.get('residential'))
+            # 1. POI / BANGUNAN / GEDUNG
+            poi = (addr.get('amenity') or addr.get('building') or 
+                   addr.get('shop') or addr.get('office') or addr.get('tourism'))
             
-            # --- BAGIAN 2: KELURAHAN / DESA (Prioritas) ---
-            # OSM menggunakan istilah village, neighbourhood, quarter, hamlet untuk setingkat Kelurahan
+            # 2. JALAN & NOMOR
+            jalan = (addr.get('road') or addr.get('street') or addr.get('pedestrian') or addr.get('residential'))
+            nomor = addr.get('house_number')
+            
+            # 3. KELURAHAN / DESA
             kelurahan = (addr.get('village') or addr.get('neighbourhood') or 
-                         addr.get('quarter') or addr.get('hamlet'))
+                         addr.get('quarter') or addr.get('hamlet') or addr.get('suburb_district'))
             
-            # --- BAGIAN 3: KECAMATAN (Prioritas) ---
-            # OSM biasanya menggunakan suburb, district, atau city_district
-            kecamatan = (addr.get('suburb') or addr.get('district') or 
-                         addr.get('city_district') or addr.get('town'))
+            # 4. KECAMATAN
+            kecamatan = (addr.get('suburb') or addr.get('district') or addr.get('city_district') or addr.get('town'))
             
-            # --- BAGIAN 4: KABUPATEN / KOTA (Prioritas) ---
-            kota = (addr.get('city') or addr.get('regency') or 
-                    addr.get('municipality') or addr.get('county'))
+            # 5. KABUPATEN / KOTA
+            kota = (addr.get('city') or addr.get('regency') or addr.get('municipality') or addr.get('county'))
             
-            # --- PENYUSUNAN STRING ---
+            # --- PENYUSUNAN STRING YANG CERDAS ---
             parts = []
+            seen_words = set()
+
+            def add_part(label, value, prefix=""):
+                if not value: return
+                val_clean = str(value).strip()
+                val_lower = val_clean.lower()
+                
+                # Cek agar tidak ada repetisi (e.g., "Kec. Sleman, Sleman")
+                if any(word in seen_words for word in val_lower.split()):
+                    return
+                
+                parts.append(f"{prefix}{val_clean}")
+                for word in val_lower.split():
+                    seen_words.add(word)
+
+            # Tambahkan urutan dari paling spesifik
+            if poi: add_part("POI", poi)
             
-            if jalan: 
-                parts.append(jalan) # Contoh: "Jalan Mawar"
+            full_jalan = f"{jalan} No. {nomor}" if (jalan and nomor) else jalan
+            if full_jalan: add_part("Jalan", full_jalan)
             
-            if kelurahan:
-                # Cek duplikasi (kadang nama jalan = nama kelurahan)
-                if not jalan or (jalan and kelurahan.lower() not in jalan.lower()):
-                    parts.append(f"Kel. {kelurahan}")
+            if kelurahan: add_part("Kelurahan", kelurahan, "Kel. ")
+            if kecamatan: add_part("Kecamatan", kecamatan, "Kec. ")
+            if kota: add_part("Kota", kota)
             
-            if kecamatan:
-                # Cek duplikasi (kadang kelurahan = kecamatan)
-                if not kelurahan or (kelurahan and kecamatan.lower() != kelurahan.lower()):
-                    parts.append(f"Kec. {kecamatan}")
-            
-            if kota:
-                # Cek duplikasi
-                if not kecamatan or (kecamatan and kota.lower() != kecamatan.lower()):
-                    parts.append(kota)
-            
-            # Jika semua admin kosong (sangat jarang), fallback ke display_name
-            if not parts:
-                return data.get('display_name', '').split(',')[0]
+            # Fallback ke display_name jika parts masih terlalu dikit
+            if len(parts) < 2:
+                dn_parts = data.get('display_name', '').split(',')
+                return ", ".join([p.strip() for p in dn_parts[:3]])
                 
             return ", ".join(parts)
             
     except Exception:
         pass
 
-    # Fallback terakhir banget
     return f"{lat}, {lng}"
 
 # Geolocation & UI state
@@ -252,37 +257,9 @@ with main_container:
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
         use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
     
-    # --- 3. HANDLE LOCATION LOGIC & DIALOG ---
+    # --- 3. SILENT LOCATION DETECTION (NO DIALOG) ---
     
-    @st.dialog("📍 Deteksi Lokasi")
-    def show_location_dialog():
-        # Minimalist status indicator
-        with st.status("Sedang menyambungkan ke satelit...", expanded=True) as status:
-            location_data = streamlit_js_eval(
-                js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
-                key='geo_capture_v4_unique', # Unique key to prevent ID errors
-                want_output=True
-            )
-            
-            if location_data:
-                lat, lng = location_data.get('latitude'), location_data.get('longitude')
-                if lat and lng:
-                    status.update(label="📍 Menemukan wilayah...", state="running")
-                    
-                    human_address = get_location_description(lat, lng)
-                    
-                    st.session_state.user_lat = str(lat)
-                    st.session_state.user_lng = str(lng)
-                    st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
-                    
-                    status.update(label="✅ Lokasi Terkunci!", state="complete")
-                    time.sleep(1.2)
-                    st.rerun()
-            else:
-                # Fallback message
-                st.write("🛰️ *Pastikan GPS aktif & ijinkan akses di browser...*")
-
-    # Toggle Handling
+    # Toggle Handling (Reset state if turned off)
     if use_location != st.session_state.use_location_toggle:
         st.session_state.use_location_toggle = use_location
         if not use_location:
@@ -290,13 +267,31 @@ with main_container:
             st.session_state.user_lng = None
             st.session_state.resolved_address = None
             st.rerun()
-        else:
-            # Trigger dialog only when turning ON
-            show_location_dialog()
 
-    # Auto-trigger if enabled but not resolved
+    # Silent Loader Logic (Directly in UI flow to fix ID errors)
     if use_location and not st.session_state.resolved_address:
-        show_location_dialog()
+        with st.status("📍 Sedang mengunci lokasi Anda...", expanded=False) as status:
+            location_data = streamlit_js_eval(
+                js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
+                key='geo_silent_logic_final_v5', # Fresh key
+                want_output=True
+            )
+            
+            if location_data:
+                lat, lng = location_data.get('latitude'), location_data.get('longitude')
+                if lat and lng:
+                    status.update(label="🛰️ Berhasil mengunci GPS! Mencari info wilayah...", state="running")
+                    human_address = get_location_description(lat, lng)
+                    
+                    st.session_state.user_lat = str(lat)
+                    st.session_state.user_lng = str(lng)
+                    st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
+                    
+                    status.update(label="✅ Lokasi Siap!", state="complete")
+                    time.sleep(0.5)
+                    st.rerun()
+            else:
+                st.write("🌍 *Mohon ijinkan akses lokasi di browser...*")
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
