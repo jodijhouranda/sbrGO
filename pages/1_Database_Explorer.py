@@ -98,9 +98,6 @@ def deduplicate_db():
         st.error(f"Error deduplicating: {e}")
         return False
 
-st.markdown('<p style="font-size:2rem; font-weight:800; color:#1e293b;">📦 Database Explorer</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Manage and Analyze your saved business data.</p>', unsafe_allow_html=True)
-
 df_db = fetch_db_data()
 
 if df_db is not None and not df_db.empty:
@@ -113,22 +110,29 @@ if df_db is not None and not df_db.empty:
     </div>
     """, unsafe_allow_html=True)
     
-    m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
     
     with m_col1:
-        st.metric("Total Records", f"{len(df_db):,}")
+        st.metric("Total Establishments", f"{len(df_db):,}")
+    
     with m_col2:
-        avg_rating = pd.to_numeric(df_db['Rating'], errors='coerce').mean()
-        st.metric("Avg Rating", f"{avg_rating:.2f} ⭐")
+        cities = df_db['Kabupaten'].nunique() if 'Kabupaten' in df_db.columns else 0
+        st.metric("Total Cities", f"{cities}")
+        
     with m_col3:
-        total_rev = pd.to_numeric(df_db['Reviews'], errors='coerce').sum()
-        st.metric("Total Reviews", f"{total_rev:,.0f}")
+        provinces = df_db['Provinsi'].nunique() if 'Provinsi' in df_db.columns else 0
+        st.metric("Total Provinces", f"{provinces}")
+        
     with m_col4:
-        unique_cities = df_db['Kabupaten'].nunique() if 'Kabupaten' in df_db.columns else 0
-        st.metric("Cities Covered", f"{unique_cities}")
-    with m_col5:
-        top_cat_val = str(df_db['Kategori OSM'].mode()[0]) if not df_db['Kategori OSM'].empty else "N/A"
-        st.metric("Top Category", top_cat_val[:10] + "..." if len(top_cat_val) > 10 else top_cat_val)
+        # Calculate Unique 2-Digit KBLI
+        kbli_2digit = 0
+        if 'KBLI' in df_db.columns:
+            # Safe conversion to string and slicing first 2 digits
+            kbli_series = df_db['KBLI'].astype(str).str.strip().str[:2]
+            # Filter out 'na', 'No', 'N/', or empty
+            kbli_series = kbli_series[kbli_series.str.match(r'^\d{2}$', na=False)]
+            kbli_2digit = kbli_series.nunique()
+        st.metric("Unique KBLI 2-Digit", f"{kbli_2digit}")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
