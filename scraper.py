@@ -137,15 +137,19 @@ class GoogleMapsScraper:
             
             try:
                 response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
+                    model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": "You are a helpful assistant that extracts structured business data and identifies official KBLI 2020 categories as defined by the OSS (Online Single Submission) Indonesia system."},
+                        {"role": "system", "content": "You are a helpful assistant that extracts structured business data and identifies official KBLI 2020 categories as defined by the OSS (Online Single Submission) Indonesia system. ALWAYS return a valid JSON object."},
                         {"role": "user", "content": prompt}
                     ],
                     response_format={ "type": "json_object" }
                 )
                 
-                gpt_data = json.loads(response.choices[0].message.content)
+                content = response.choices[0].message.content
+                if not content:
+                    raise ValueError("Empty response from GPT")
+                    
+                gpt_data = json.loads(content)
                 item.update({
                     "KBLI": gpt_data.get("kbli", "N/A"),
                     "Nama Resmi KBLI": gpt_data.get("nama_kbli", "N/A"),
@@ -157,14 +161,16 @@ class GoogleMapsScraper:
                 if progress_callback:
                     progress_callback(i + 1, len(self.results), f"GPT Enhancing: {i+1}/{len(self.results)}")
             except Exception as e:
-                print(f"Error processing {item['Name']} with GPT: {e}")
+                error_msg = f"Error processing {item['Name']} with GPT: {str(e)}"
+                print(error_msg)
+                # Ensure we at least have some info if it fails
                 item.update({
-                    "KBLI": "Error",
-                    "Nama Resmi KBLI": "Error",
-                    "Keterangan KBLI": "Error",
-                    "Kabupaten": "Error",
-                    "Kecamatan": "Error",
-                    "Kelurahan": "Error"
+                    "KBLI": f"Error: {str(e).split('(')[0]}",
+                    "Nama Resmi KBLI": "N/A",
+                    "Keterangan KBLI": "N/A",
+                    "Kabupaten": "N/A",
+                    "Kecamatan": "N/A",
+                    "Kelurahan": "N/A"
                 })
 
     def extract_details(self, page, url):
