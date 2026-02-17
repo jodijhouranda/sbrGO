@@ -38,11 +38,11 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 8rem; /* Adjusted to a more balanced fixed size for stability */
+        font-size: 12rem; /* Finding the perfect middle ground */
         font-weight: 900;
         margin-bottom: 0px;
-        letter-spacing: -2px !important; 
-        line-height: 1 !important;
+        letter-spacing: -3px !important; 
+        line-height: 0.9 !important;
         text-shadow: 0 20px 60px rgba(99, 102, 241, 0.15);
         white-space: nowrap;
     }
