@@ -123,6 +123,24 @@ st.markdown("""
 st.markdown('<div class="logo-container"><p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p></div>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
+@st.cache_data(show_spinner=False)
+def get_location_description(lat, lng):
+    """Resolve coordinates to a short location description (Jalan + Kabupaten)."""
+    try:
+        headers = {'User-Agent': 'sbrGO-App/1.0'}
+        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
+        res = requests.get(geo_url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            addr = data.get('address', {})
+            jalan = addr.get('road') or ""
+            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or ""
+            if jalan or kabupaten:
+                return f"{jalan} {kabupaten}".strip()
+    except:
+        pass
+    return None
+
 # Geolocation state
 if 'user_lat' not in st.session_state:
     st.session_state.user_lat = None
@@ -141,7 +159,10 @@ with main_container:
     
     st.markdown("---")
     
-    # 2. Configuration (Previously in Sidebar)
+    # Pre-calculate modified query for preview
+    modified_query = search_term
+    
+    # 2. Configuration
     conf_col1, conf_col2 = st.columns(2)
     with conf_col1:
         use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
@@ -149,11 +170,12 @@ with main_container:
         secret_api_key = st.secrets.get("OPENAI_API_KEY") or (st.secrets.get("openai", {}).get("openapi") if isinstance(st.secrets.get("openai"), dict) else None)
         
         if secret_api_key:
-            st.success("✅ OpenAI API Key Loaded")
             api_key = str(secret_api_key).strip()
         else:
             api_key_input = st.text_input("OpenAI API Key", type="password")
             api_key = api_key_input.strip() if api_key_input else None
+        
+        show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
     
     with conf_col2:
         use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=False)
@@ -193,7 +215,14 @@ with main_container:
             if "lat" in query_params and "lng" in query_params:
                 st.session_state.user_lat = query_params["lat"]
                 st.session_state.user_lng = query_params["lng"]
-                st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
+                
+                # Immediate Preview of refined query
+                loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+                if loc_description:
+                    modified_query = f"{search_term} di sekitar {loc_description}"
+                    st.markdown(f'<p style="color:#6366f1; font-size:0.85rem; font-weight:500;">🔍 Akan mencari: <i>"{modified_query}"</i></p>', unsafe_allow_html=True)
+                else:
+                    st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
 
     st.markdown("---")
     start_idx = st.button("🚀 Start Extraction", use_container_width=True)
@@ -220,26 +249,6 @@ if start_idx:
                 lat = st.session_state.user_lat if use_location else None
                 lng = st.session_state.user_lng if use_location else None
                 
-                modified_query = search_term
-                if use_location and lat and lng:
-                    try:
-                        # Call Nominatim to get detailed location
-                        headers = {'User-Agent': 'sbrGO-App/1.0'}
-                        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
-                        res = requests.get(geo_url, headers=headers, timeout=5)
-                        if res.status_code == 200:
-                            data = res.json()
-                            addr = data.get('address', {})
-                            jalan = addr.get('road') or ""
-                            kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or ""
-                            
-                            if jalan or kabupaten:
-                                loc_desc = f"{jalan} {kabupaten}".strip()
-                                modified_query = f"{search_term} di sekitar {loc_desc}"
-                                st.info(f"🔍 Mencari: **{modified_query}**")
-                    except:
-                        pass
-
                 results = scraper.run(
                     modified_query, 
                     total_results, 
@@ -263,18 +272,19 @@ if start_idx:
                 df = pd.DataFrame(results)
                 
                 # --- 3. MAP VISUALIZATION ---
-                st.markdown("---")
-                st.markdown("### 🗺️ Business Locations Mapping")
-                # Filter rows with valid Lat/Lng and convert to numeric
-                map_df = df.copy()
-                map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
-                map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
-                map_df = map_df.dropna(subset=['latitude', 'longitude'])
-                
-                if not map_df.empty:
-                    st.map(map_df[['latitude', 'longitude']])
-                else:
-                    st.warning("No location coordinates available to map.")
+                if show_map:
+                    st.markdown("---")
+                    st.markdown("### 🗺️ Business Locations Mapping")
+                    # Filter rows with valid Lat/Lng and convert to numeric
+                    map_df = df.copy()
+                    map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
+                    map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
+                    map_df = map_df.dropna(subset=['latitude', 'longitude'])
+                    
+                    if not map_df.empty:
+                        st.map(map_df[['latitude', 'longitude']])
+                    else:
+                        st.warning("No location coordinates available to map.")
 
                 # --- 4. DATA TABLE DISPLAY ---
                 # Define logical order: Identity -> Position -> KBLI -> Other
