@@ -29,9 +29,6 @@ st.markdown("Scrape business data from Google Maps easily.")
 st.sidebar.markdown("---")
 st.sidebar.header("Advanced Settings")
 
-# User can choose to show browser or not, default to True
-show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping.")
-
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
 # Try to get API key from secrets
@@ -90,9 +87,8 @@ if st.button("🚀 Start Scraping", use_container_width=True):
 
             # Run scraper
             with st.spinner("Browser is running..."):
-                # Headless is the inverse of Show Browser.
-                headless_param = not show_browser
-                results = scraper.run(search_term, total_results, headless_param, progress_callback=update_progress)
+                # Always run in headless mode for stability and silence
+                results = scraper.run(search_term, total_results, True, progress_callback=update_progress)
             
             if results:
                 if use_gpt:
