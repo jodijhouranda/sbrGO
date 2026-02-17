@@ -38,7 +38,7 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 5rem; /* Balanced size: clear but not overwhelming */
+        font-size: 10rem; /* Balanced size: clear but not overwhelming */
         font-weight: 800;
         margin-bottom: 0px;
         letter-spacing: normal !important; /* Strictly prevent overlapping */
