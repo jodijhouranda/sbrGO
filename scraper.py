@@ -40,7 +40,7 @@ class GoogleMapsScraper:
             print(f"Geocoding error: {e}")
         return {}
 
-    def run(self, search_term, total_results=10, headless=False, progress_callback=None):
+    def run(self, search_term, total_results=10, headless=False, progress_callback=None, user_lat=None, user_lng=None):
         print(f"Starting scraper for query: '{search_term}' target: {total_results} results")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
@@ -48,7 +48,15 @@ class GoogleMapsScraper:
             page = context.new_page()
 
             # 1. Search and Scroll
-            page.goto("https://www.google.com/maps", timeout=60000)
+            # Construct URL with location bias if coordinates provided
+            if user_lat and user_lng:
+                # Format: https://www.google.com/maps/search/{query}/@{lat},{lng},15z
+                search_url = f"https://www.google.com/maps/search/{search_term}/@{user_lat},{user_lng},15z"
+                print(f"Using location-biased search: {search_url}")
+            else:
+                search_url = "https://www.google.com/maps"
+
+            page.goto(search_url, timeout=60000)
             page.wait_for_timeout(2000)
 
             # Accept cookies if any
@@ -57,22 +65,24 @@ class GoogleMapsScraper:
             except:
                 pass
 
-            print("Searching...")
-            # Try multiple selectors for search box
-            try:
-                page.wait_for_selector('input#searchboxinput', timeout=10000)
-                page.fill('input#searchboxinput', search_term)
-            except:
-                print("Standard selector failed, trying fallback...")
-                page.wait_for_selector('input[name="q"]', timeout=10000)
-                page.fill('input[name="q"]', search_term)
-            
-            page.wait_for_timeout(1000)
-            page.keyboard.press("Enter")
+            # If we used a direct search URL, we might already be on results page
+            # Otherwise, we need to type and search
+            if not (user_lat and user_lng):
+                print("Performing standard search...")
+                try:
+                    page.wait_for_selector('input#searchboxinput', timeout=10000)
+                    page.fill('input#searchboxinput', search_term)
+                except:
+                    print("Standard selector failed, trying fallback...")
+                    page.wait_for_selector('input[name="q"]', timeout=10000)
+                    page.fill('input[name="q"]', search_term)
+                
+                page.wait_for_timeout(1000)
+                page.keyboard.press("Enter")
             
             # Wait for results to load
             print("Waiting for results...")
-            page.wait_for_selector('div[role="feed"]', timeout=10000)
+            page.wait_for_selector('div[role="feed"]', timeout=15000)
             
             # Scroll to load results
             urls = set()

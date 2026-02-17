@@ -143,14 +143,62 @@ with st.sidebar.expander("Usage Guide"):
     - **Results**: Export to CSV or Excel.
     """)
 
+# Geolocation state
+if 'user_lat' not in st.session_state:
+    st.session_state.user_lat = None
+if 'user_lng' not in st.session_state:
+    st.session_state.user_lng = None
+
 # Main UI layout
 with st.container(border=True):
     col1, col2 = st.columns([3, 1])
     with col1:
-        search_term = st.text_input("Search Query", placeholder="e.g., Coffee in Jakarta")
+        search_term = st.text_input("Search Query", placeholder="e.g., PT or Coffee shop")
     with col2:
-        total_results = st.number_input("Limit", min_value=1, max_value=20, value=10)
+        total_results = st.number_input("Limit", min_value=1, max_value=20, value=5)
     
+    # Geolocation Toggle
+    use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=False)
+    
+    if use_location:
+        # Custom HTML/JS to get geolocation
+        st.components.v1.html(
+            """
+            <div id="location-status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">
+                Detecting location...
+            </div>
+            <script>
+                if ("geolocation" in navigator) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        document.getElementById('location-status').innerHTML = "📍 Location detected: " + lat.toFixed(4) + ", " + lng.toFixed(4);
+                        
+                        // Send back to Streamlit via URL (only if changed significantly)
+                        const params = new URLSearchParams(window.parent.location.search);
+                        if (params.get('lat') != lat.toFixed(6)) {
+                            params.set('lat', lat.toFixed(6));
+                            params.set('lng', lng.toFixed(6));
+                            window.parent.location.search = params.toString();
+                        }
+                    }, function(error) {
+                        document.getElementById('location-status').innerHTML = "❌ Error: " + error.message;
+                    });
+                } else {
+                    document.getElementById('location-status').innerHTML = "❌ Geolocation not supported";
+                }
+            </script>
+            """,
+            height=30
+        )
+        
+        # Pull coordinates from URL query params
+        query_params = st.query_params
+        if "lat" in query_params and "lng" in query_params:
+            st.session_state.user_lat = query_params["lat"]
+            st.session_state.user_lng = query_params["lng"]
+            st.success(f"Lokasi terkunci: {st.session_state.user_lat}, {st.session_state.user_lng}")
+
     start_idx = st.button("Start Extraction", use_container_width=True)
 
 if start_idx:
@@ -159,20 +207,29 @@ if start_idx:
     elif use_gpt and not api_key:
         st.error("Please enter an OpenAI API Key or disable GPT enhancement.")
     else:
-        # Initialize progress
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
         try:
             scraper = GoogleMapsScraper(api_key=api_key if use_gpt else None)
             
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
             def update_progress(current, total, message):
-                percent = int((current / total) * 100)
-                progress_bar.progress(percent)
-                status_text.markdown(f"<p style='color:#64748b; font-size:0.9rem;'>{message}</p>", unsafe_allow_html=True)
-
-            with st.spinner("Initializing browser..."):
-                results = scraper.run(search_term, total_results, True, progress_callback=update_progress)
+                progress = current / total
+                progress_bar.progress(progress)
+                status_text.text(message)
+            
+            with st.spinner("Scraping Google Maps..."):
+                # Pass user location if enabled
+                lat = st.session_state.user_lat if use_location else None
+                lng = st.session_state.user_lng if use_location else None
+                results = scraper.run(
+                    search_term, 
+                    total_results, 
+                    True, 
+                    progress_callback=update_progress,
+                    user_lat=lat,
+                    user_lng=lng
+                )
             
             if results:
                 # Always enrich with official geographic data
