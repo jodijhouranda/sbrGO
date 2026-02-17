@@ -104,7 +104,29 @@ st.markdown('<p class="subtitle">Manage and Analyze your saved business data.</p
 df_db = fetch_db_data()
 
 if df_db is not None and not df_db.empty:
-    act_col1, act_col2, act_col3 = st.columns(3)
+    # 1. METRICS AT THE TOP
+    st.metric("Total Records Found", len(df_db))
+    st.markdown("---")
+    
+    # 2. TABLE (DATA EDITOR)
+    df_display = df_db.copy()
+    df_display.insert(0, "Select", False)
+    
+    edited_df = st.data_editor(
+        df_display,
+        column_config={
+            "Select": st.column_config.CheckboxColumn("Select", default=False),
+            "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape"),
+            "URL": st.column_config.LinkColumn("G-Maps")
+        },
+        disabled=[c for c in df_display.columns if c != "Select"],
+        hide_index=True,
+        use_container_width=True,
+        key="db_editor"
+    )
+    
+    # 3. BUTTONS BELOW THE TABLE
+    act_col1, act_col2 = st.columns(2)
     
     with act_col1:
         if st.button("🔄 Remove Duplicates", use_container_width=True):
@@ -124,30 +146,9 @@ if df_db is not None and not df_db.empty:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
         )
-        
-    with act_col3:
-        st.metric("Total Records", len(df_db))
 
-    st.markdown("---")
-    
-    df_display = df_db.copy()
-    df_display.insert(0, "Select", False)
-    
-    edited_df = st.data_editor(
-        df_display,
-        column_config={
-            "Select": st.column_config.CheckboxColumn("Select", default=False),
-            "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape"),
-            "URL": st.column_config.LinkColumn("G-Maps")
-        },
-        disabled=[c for c in df_display.columns if c != "Select"],
-        hide_index=True,
-        use_container_width=True,
-        key="db_editor"
-    )
-    
+    # Delete Action
     selected_rows = edited_df[edited_df["Select"] == True]
-    
     if not selected_rows.empty:
         st.warning(f"Terpilih {len(selected_rows)} data untuk dihapus.")
         if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
@@ -159,5 +160,33 @@ if df_db is not None and not df_db.empty:
                 st.success(f"Berhasil menghapus {len(to_delete)} data.")
                 time.sleep(1)
                 st.rerun()
+
+    # 4. MAP AT THE BOTTOM
+    st.markdown("---")
+    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b;">🗺️ Database Distribution Map</p>', unsafe_allow_html=True)
+    
+    import folium
+    from streamlit_folium import st_folium
+    
+    map_df = df_db.copy()
+    map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
+    map_df['longitude'] = pd.to_numeric(map_df['Longitude'], errors='coerce')
+    map_df = map_df.dropna(subset=['latitude', 'longitude'])
+    
+    if not map_df.empty:
+        avg_lat = map_df['latitude'].mean()
+        avg_lng = map_df['longitude'].mean()
+        m = folium.Map(location=[avg_lat, avg_lng], zoom_start=12)
+        for _, row in map_df.iterrows():
+            folium.Marker(
+                [row['latitude'], row['longitude']],
+                popup=f"{row['Name']} ({row.get('Rating', 'N/A')})",
+                tooltip=row['Name'],
+                icon=folium.Icon(color="indigo", icon="info-sign")
+            ).add_to(m)
+        st_folium(m, width="100%", height=500, returned_objects=[], key="db_explorer_map")
+    else:
+        st.info("Tidak ada data koordinat untuk ditampilkan di peta.")
+
 else:
     st.info("Database kosong atau belum terhubung. Silakan gunakan Scraper terlebih dahulu.")

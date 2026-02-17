@@ -290,15 +290,15 @@ def show_scraper_page():
         st.markdown("---")
         conf_col1, conf_col2 = st.columns(2)
         with conf_col1:
-            use_gpt = st.toggle("🤖 AI (GPT) Enhancement", value=True, help="Use AI to extract KBLI and clean addresses")
+            use_gpt = st.toggle("AI For KBLI", value=True, help="Use AI to extract KBLI and clean addresses")
             secret_api_key = st.secrets.get("OPENAI_API_KEY")
             if secret_api_key:
                 api_key = str(secret_api_key).strip()
             else:
                 api_key_input = st.text_input("OpenAI API Key", type="password")
                 api_key = api_key_input.strip() if api_key_input else None
-            show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
-            use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
+            show_map = st.toggle("Show Map", value=True)
+            use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle, key="loc_toggle")
         
         if use_location != st.session_state.use_location_toggle:
             st.session_state.use_location_toggle = use_location
