@@ -28,9 +28,13 @@ class GoogleMapsScraper:
                 data = response.json()
                 address = data.get('address', {})
                 return {
+                    "Negara": address.get('country') or "Indonesia",
+                    "Provinsi": address.get('state') or "N/A",
                     "Kabupaten": address.get('city') or address.get('regency') or address.get('county') or "N/A",
                     "Kecamatan": address.get('district') or address.get('subdistrict') or address.get('city_district') or "N/A",
-                    "Kelurahan": address.get('village') or address.get('suburb') or address.get('neighbourhood') or "N/A"
+                    "Kelurahan": address.get('village') or address.get('suburb') or address.get('neighbourhood') or "N/A",
+                    "Keterangan Lingkungan": address.get('neighbourhood') or address.get('quarter') or "N/A",
+                    "Kode Pos": address.get('postcode') or "N/A"
                 }
         except Exception as e:
             print(f"Geocoding error: {e}")
@@ -155,22 +159,24 @@ class GoogleMapsScraper:
         for i, item in enumerate(self.results):
             print(f"[{i+1}/{len(self.results)}] Processing: {item['Name']}")
 
-            # GPT for KBLI and fallback for missing geo fields
+            # 2. GPT for KBLI and fallback for missing geo fields
             prompt = f"""
             Analyze the following business information from Google Maps and provide structured data in JSON format.
             Business Name: {item['Name']}
             Address: {item['Address']}
-            Position: {item.get('Provinsi')}/{item.get('Kabupaten')}/{item.get('Kecamatan')}/{item.get('Kelurahan')}
+            Position: {item.get('Negara')}/{item.get('Provinsi')}/{item.get('Kabupaten')}/{item.get('Kecamatan')}/{item.get('Kelurahan')}
             
             Return the following fields:
             - kbli: Predict the 5-digit KBLI 2020 code (Indonesian Standard Industrial Classification).
             - nama_kbli: The official title (Nama Resmi) for this KBLI code exactly as it appears in the OSS (Online Single Submission) system / KBLI 2020.
             - keterangan_kbli: Brief description/scope of the KBLI category based on OSS regulations.
-            - provinsi: Use provided Geo Data if available, otherwise extract from address.
-            - kabupaten: The Regency/City (Kabupaten/Kota). Use provided Geo Data if available, otherwise extract from address.
-            - kecamatan: The District (Kecamatan). Use provided Geo Data if available, otherwise extract from address.
-            - kelurahan: The Sub-district/Village (Kelurahan/Desa). Use provided Geo Data if available, otherwise extract from address.
-            - kode_pos: The Postal Code. Use provided Geo Data if available, otherwise extract from address.
+            - negara: The Country (Negara).
+            - provinsi: The Province (Provinsi).
+            - kabupaten: The Regency/City (Kabupaten/Kota).
+            - kecamatan: The District (Kecamatan).
+            - kelurahan: The Sub-district/Village (Kelurahan/Desa).
+            - keterangan_lingkungan: Neighbourhood/Environment details (Keterangan Lingkungan).
+            - kode_pos: The Postal Code.
 
             Format the output as a clean JSON object.
             """
@@ -196,10 +202,12 @@ class GoogleMapsScraper:
                     "KBLI": gpt_data.get("kbli", "N/A"),
                     "Nama Resmi KBLI": gpt_data.get("nama_kbli", "N/A"),
                     "Keterangan KBLI": gpt_data.get("keterangan_kbli", "N/A"),
+                    "Negara": gpt_data.get("negara", item.get("Negara", "N/A")),
                     "Provinsi": gpt_data.get("provinsi", item.get("Provinsi", "N/A")),
                     "Kabupaten": gpt_data.get("kabupaten", item.get("Kabupaten", "N/A")),
                     "Kecamatan": gpt_data.get("kecamatan", item.get("Kecamatan", "N/A")),
                     "Kelurahan": gpt_data.get("kelurahan", item.get("Kelurahan", "N/A")),
+                    "Keterangan Lingkungan": gpt_data.get("keterangan_lingkungan", item.get("Keterangan Lingkungan", "N/A")),
                     "Kode Pos": gpt_data.get("kode_pos", item.get("Kode Pos", "N/A"))
                 })
                 

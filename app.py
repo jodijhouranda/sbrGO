@@ -190,8 +190,9 @@ if start_idx:
                 # Define logical order: Identity -> Position -> KBLI -> Other
                 ordered_cols = [
                     "Name",                                     # Identity
-                    "Provinsi", "Kabupaten", "Kecamatan",       # Position
-                    "Kelurahan", "Kode Pos", "Address", 
+                    "Negara", "Provinsi", "Kabupaten",          # Position
+                    "Kecamatan", "Kelurahan", "Keterangan Lingkungan",
+                    "Kode Pos", "Address", 
                     "Latitude", "Longitude", "URL",
                     "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
                     "Rating", "Reviews", "Operation Hours",      # Other
