@@ -62,7 +62,7 @@ col1, col2 = st.columns([2, 1])
 with col1:
     search_term = st.text_input("What are you looking for?", placeholder="e.g., Coffee in Jakarta")
 with col2:
-    total_results = st.number_input("Results Count", min_value=1, max_value=1000, value=10)
+    total_results = st.number_input("Results Count", min_value=1, max_value=20, value=10)
 
 if st.button("🚀 Start Scraping", use_container_width=True):
     if not search_term:
