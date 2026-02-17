@@ -136,10 +136,13 @@ def get_location_description(lat, lng):
         if res.status_code == 200:
             data = res.json()
             addr = data.get('address', {})
-            jalan = addr.get('road') or addr.get('suburb') or ""
+            # Prioritaskan Jalan (Road/Suburb)
+            jalan = addr.get('road') or addr.get('suburb') or addr.get('village') or ""
+            # Prioritaskan Kabupaten/Kota
             kabupaten = addr.get('city') or addr.get('regency') or addr.get('county') or addr.get('state_district') or ""
+            
             if jalan or kabupaten:
-                return f"{jalan} {kabupaten}".strip()
+                return f"{jalan}, {kabupaten}".strip(", ")
             return f"{lat}, {lng}"
     except Exception:
         pass
@@ -157,7 +160,10 @@ if "lat" in query_params and "lng" in query_params:
     st.session_state.user_lat = str(query_params["lat"])
     st.session_state.user_lng = str(query_params["lng"])
     st.session_state.use_location_toggle = True
-    st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
+    
+    # Auto convert URL params to address if possible
+    desc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+    st.session_state.resolved_address = desc if desc else f"{st.session_state.user_lat}, {st.session_state.user_lng}"
 
 # Unified Main UI layout
 main_container = st.container(border=True)
@@ -215,8 +221,6 @@ with main_container:
     if use_location and not st.session_state.resolved_address:
         st.info("🛰️ Mencari titik koordinat Anda... (Izinkan akses lokasi)")
         
-        # PERBAIKAN: Mengambil properti latitude & longitude secara eksplisit
-        # karena pos.coords seringkali tidak bisa diserialisasi langsung oleh browser
         location_data = streamlit_js_eval(
             js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
             key='geo_locator_final',
@@ -230,13 +234,21 @@ with main_container:
             if lat and lng:
                 st.session_state.user_lat = str(lat)
                 st.session_state.user_lng = str(lng)
-                st.session_state.resolved_address = f"{lat}, {lng}"
                 
-                st.success(f"✅ Lokasi terkunci: {lat}, {lng}")
+                # --- PERUBAHAN DISINI: Panggil OSM Convert ---
+                with st.spinner("Mengubah koordinat jadi alamat..."):
+                    human_address = get_location_description(lat, lng)
+                
+                if human_address:
+                    st.session_state.resolved_address = human_address
+                else:
+                    st.session_state.resolved_address = f"{lat}, {lng}"
+                # ---------------------------------------------
+                
+                st.success(f"✅ Lokasi terkunci: {st.session_state.resolved_address}")
                 time.sleep(0.5)
                 st.rerun()
         else:
-            # Tidak perlu warning yang mengganggu, cukup diam menunggu sampai browser merespon
             pass
 
     # Construct final query
