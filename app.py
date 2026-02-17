@@ -144,4 +144,4 @@ if st.button("🚀 Start Scraping", use_container_width=True):
             st.expander("Show detailed error").code(traceback.format_exc())
 
 st.markdown("---")
-st.markdown("Created with ❤️ using Playwright and Streamlit")
+st.markdown("Created with ❤️ using Playwright and Streamlit by JJS")
