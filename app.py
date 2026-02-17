@@ -252,50 +252,54 @@ with main_container:
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
         use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
     
-    # --- 3. HANDLE LOCATION LOGIC & PREVIEW ---
+    # --- 3. HANDLE LOCATION LOGIC & DIALOG ---
     
-    # Tombol Toggle
+    @st.dialog("🛰️ Mencapai Lokasi Anda")
+    def show_location_dialog():
+        progress_bar = st.progress(0, text="Menghubungkan ke satelit...")
+        
+        # 1. GPS Lock
+        location_data = streamlit_js_eval(
+            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
+            key='geo_dialog_logic',
+            want_output=True
+        )
+        
+        if location_data:
+            lat, lng = location_data.get('latitude'), location_data.get('longitude')
+            if lat and lng:
+                progress_bar.progress(50, text="📍 GPS Terkunci! Mencari nama wilayah...")
+                
+                # 2. Address Resolution
+                human_address = get_location_description(lat, lng)
+                
+                st.session_state.user_lat = str(lat)
+                st.session_state.user_lng = str(lng)
+                st.session_state.resolved_address = human_address if human_address else f"{lat}, {lng}"
+                
+                progress_bar.progress(100, text=f"✅ Berhasil: {st.session_state.resolved_address}")
+                time.sleep(1.2)
+                st.rerun()
+        else:
+            st.warning("⚠️ Izinkan akses lokasi di browser untuk melanjutkan.")
+            if st.button("🔄 Coba Lagi"):
+                st.rerun()
+
+    # Toggle Handling
     if use_location != st.session_state.use_location_toggle:
         st.session_state.use_location_toggle = use_location
         if not use_location:
-            # Reset jika dimatikan
             st.session_state.user_lat = None
             st.session_state.user_lng = None
             st.session_state.resolved_address = None
             st.rerun()
-
-    # Logika Pencarian Lokasi
-    if use_location and not st.session_state.resolved_address:
-        st.info("🛰️ Mencari titik koordinat Anda... (Izinkan akses lokasi)")
-        
-        location_data = streamlit_js_eval(
-            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
-            key='geo_locator_final',
-            want_output=True
-        )
-
-        if location_data:
-            lat = location_data.get('latitude')
-            lng = location_data.get('longitude')
-            
-            if lat and lng:
-                st.session_state.user_lat = str(lat)
-                st.session_state.user_lng = str(lng)
-                
-                # --- PANGGIL FUNGSI ADMINISTRATIF ---
-                with st.spinner("Mengambil data wilayah..."):
-                    human_address = get_location_description(lat, lng)
-                
-                if human_address:
-                    st.session_state.resolved_address = human_address
-                else:
-                    st.session_state.resolved_address = f"{lat}, {lng}"
-                
-                st.success(f"✅ Wilayah: {st.session_state.resolved_address}")
-                time.sleep(0.5)
-                st.rerun()
         else:
-            pass
+            # Trigger dialog only when turning ON
+            show_location_dialog()
+
+    # Auto-trigger if enabled but not resolved
+    if use_location and not st.session_state.resolved_address:
+        show_location_dialog()
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
