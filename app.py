@@ -238,15 +238,6 @@ def save_to_tidb(df):
             st.code(str(e))
 
 def show_scraper_page():
-    # Sidebar Logout
-    with st.sidebar:
-        st.markdown(f"👤 Logged in as: **{st.session_state.username}**")
-        if st.session_state.is_superuser:
-            st.markdown("👑 (Superuser)")
-        if st.button("🚪 Logout", use_container_width=True):
-            handle_logout()
-        st.markdown("---")
-
     # Premium UI Styling
     st.markdown("""
     <style>
@@ -392,7 +383,7 @@ def show_scraper_page():
     st.markdown("<br><p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ by JJS</p>", unsafe_allow_html=True)
 
 # Main Multi-page Entry Point
-st.set_page_config(page_title="NoSBRGo", page_icon="favicon.svg", layout="wide")
+st.set_page_config(page_title="NoSBRGo", page_icon="https://www.google.com/favicon.ico", layout="wide")
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'username' not in st.session_state: st.session_state.username = None
@@ -401,6 +392,15 @@ if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
 if not st.session_state.authenticated:
     show_login_page()
 else:
+    # Persistent Sidebar Logout
+    with st.sidebar:
+        st.markdown(f"👤 Logged in as: **{st.session_state.username}**")
+        if st.session_state.is_superuser:
+            st.markdown("👑 (Superuser)")
+        if st.button("🚪 Logout", use_container_width=True):
+            handle_logout()
+        st.markdown("---")
+
     scraper_page = st.Page(show_scraper_page, title="Scraper", icon="🔍", default=True)
     db_explorer_page = st.Page("pages/1_Database_Explorer.py", title="Database Explorer", icon="📦")
     pages = [scraper_page, db_explorer_page]

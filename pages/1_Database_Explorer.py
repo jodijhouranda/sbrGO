@@ -74,6 +74,19 @@ def deduplicate_db(df):
         st.error(f"Error: {e}")
         return False
 
+def format_wa_link(phone):
+    """Konversi nomor telepon Indonesia (08x, +62) ke link WhatsApp wa.me."""
+    if pd.isna(phone): return None
+    clean_phone = "".join(filter(str.isdigit, str(phone)))
+    if not clean_phone: return None
+    if clean_phone.startswith('08'):
+        return f"https://wa.me/62{clean_phone[1:]}"
+    elif clean_phone.startswith('62'):
+        return f"https://wa.me/{clean_phone}"
+    elif clean_phone.startswith('8'):
+        return f"https://wa.me/62{clean_phone}"
+    return None
+
 # Main UI
 df_db = fetch_db_data()
 
@@ -132,7 +145,11 @@ if df_db is not None and not df_db.empty:
     if not map_df.empty:
         m = folium.Map(location=[map_df['lat'].mean(), map_df['lng'].mean()], zoom_start=6)
         for _, row in map_df.iterrows():
-            folium.Marker([row['lat'], row['lng']], popup=row['Name'], icon=folium.Icon(color="indigo")).add_to(m)
+            wa_link = format_wa_link(row['Phone']) if 'Phone' in row else None
+            wa_html = f'<br><a href="{wa_link}" target="_blank">💬 WhatsApp</a>' if wa_link else ""
+            gmap_html = f'<br><a href="{row["URL"]}" target="_blank">📍 Google Maps</a>' if 'URL' in row else ""
+            popup_html = f"<b>{row['Name']}</b>{wa_html}{gmap_html}"
+            folium.Marker([row['lat'], row['lng']], popup=popup_html, icon=folium.Icon(color="indigo")).add_to(m)
         st_folium(m, width="100%", height=500, returned_objects=[], key="db_map_v3")
 else:
     st.info("No data found for your user.")
