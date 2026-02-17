@@ -115,7 +115,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Header
-st.markdown('<div class="logo-container"><p class="main-title">sbrGO</p><span class="logo-badge">Premium Scraper</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="logo-container"><p class="main-title">NoSBRGo</p></div>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle" style="margin-top:-20px;">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
 st.sidebar.header("Configuration")
