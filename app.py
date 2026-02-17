@@ -38,40 +38,33 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 4rem;
+        font-size: 6rem;
         font-weight: 800;
         margin-bottom: 0px;
-        letter-spacing: -1.5px;
-        line-height: 1.1;
-        text-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
+        letter-spacing: -3px;
+        line-height: 1;
+        text-shadow: 0 10px 40px rgba(99, 102, 241, 0.15);
     }
+    
+    .title-no { color: #6366f1; }
+    .title-sbr { color: #1e293b; }
+    .title-go { color: #a855f7; }
     
     .logo-container {
         display: flex;
         align-items: center;
         gap: 15px;
-        margin-top: -20px;
-        margin-bottom: 30px;
-    }
-    
-    .logo-badge {
-        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-        color: white;
-        padding: 5px 15px;
-        border-radius: 50px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        margin-top: -40px;
+        margin-bottom: 20px;
     }
     
     .subtitle {
-        color: #64748b;
-        font-size: 1.1rem;
-        margin-bottom: 2rem;
+        color: #94a3b8;
+        font-size: 0.85rem;
+        font-weight: 400;
+        letter-spacing: 0.5px;
+        margin-top: -15px;
+        margin-bottom: 2.5rem;
     }
     
     /* Card-like containers */
@@ -115,8 +108,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Header
-st.markdown('<div class="logo-container"><p class="main-title">NoSBRGo</p></div>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle" style="margin-top:-20px;">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
+st.markdown('<div class="logo-container"><p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p></div>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
 st.sidebar.header("Configuration")
 
