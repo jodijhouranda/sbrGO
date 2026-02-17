@@ -7,6 +7,7 @@ import os
 import asyncio
 import sys
 import time
+from streamlit_js_eval import streamlit_js_eval
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -146,8 +147,6 @@ def get_location_description(lat, lng):
 
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
-# Geolocation & UI state
-if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
 
@@ -210,26 +209,15 @@ with main_container:
             st.rerun()
 
     if use_location and not st.session_state.resolved_address:
-        # Simple HTML Button for GPS Handshake
-        st.components.v1.html(
-            """
-            <button onclick="getLoc()" style="width:100%; height:40px; background:#6366f1; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-family:sans-serif; box-shadow:0 4px 10px rgba(99,102,241,0.2);">📍 KLIK UNTUK AMBIL GPS OTOMATIS</button>
-            <script>
-                function getLoc() {
-                    navigator.geolocation.getCurrentPosition(function(pos) {
-                        const lat = pos.coords.latitude.toFixed(6);
-                        const lng = pos.coords.longitude.toFixed(6);
-                        const params = new URLSearchParams(window.parent.location.search);
-                        params.set('lat', lat);
-                        params.set('lng', lng);
-                        window.parent.location.search = params.toString();
-                    }, function(err) {
-                        alert("GPS Error: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
-                }
-            </script>
-            """, height=45
-        )
+        # Silent Automatic Geolocation capture
+        loc = streamlit_js_eval(data_string='get_geolocation', key='get_geo_silent_final')
+        if loc and 'coords' in loc:
+            lat = round(loc['coords']['latitude'], 6)
+            lng = round(loc['coords']['longitude'], 6)
+            st.session_state.user_lat = str(lat)
+            st.session_state.user_lng = str(lng)
+            st.session_state.resolved_address = f"{lat}, {lng}"
+            st.rerun()
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
