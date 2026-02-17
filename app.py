@@ -38,7 +38,7 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 15rem !important; /* Added !important to ensure override */
+        font-size: 10rem !important; /* Added !important to ensure override */
         font-weight: 800;
         margin-bottom: 0px;
         letter-spacing: normal !important; 
