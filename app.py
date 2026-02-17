@@ -202,22 +202,37 @@ def get_location_description(lat, lng):
 
     return f"{lat}, {lng}"
 
-def format_wa_link(phone):
-    """Konversi nomor telepon Indonesia (08x, +62) ke link WhatsApp wa.me."""
+def format_wa_link(phone, name=""):
+    """Konversi nomor telepon ke link WhatsApp dengan pesan template formal BPS."""
     if pd.isna(phone): return None
     # Bersihkan karakter non-digit
     clean_phone = "".join(filter(str.isdigit, str(phone)))
     
     if not clean_phone: return None
     
+    # Tentukan prefix negara
+    final_num = ""
     if clean_phone.startswith('08'):
-        return f"https://wa.me/62{clean_phone[1:]}"
+        final_num = f"62{clean_phone[1:]}"
     elif clean_phone.startswith('62'):
-        return f"https://wa.me/{clean_phone}"
-    elif clean_phone.startswith('8'): # handle "812..."
-        return f"https://wa.me/62{clean_phone}"
-        
-    return None
+        final_num = clean_phone
+    elif clean_phone.startswith('8'):
+        final_num = f"62{clean_phone}"
+    else:
+        return None
+
+    # Draft Pesan Formal BPS
+    business_label = f" *{name}*" if name else ""
+    msg = (
+        "Halo, perkenalkan kami dari BPS Provinsi Kalimantan Barat. "
+        "Dalam rangka pelaksanaan Sensus Ekonomi 2026 dan kegiatan pemutakhiran data usaha di wilayah Kalimantan Barat, "
+        f"kami bermaksud mengonfirmasi apakah usaha{business_label} masih aktif beroperasi di lokasi tersebut? "
+        "Terima kasih atas kerja samanya."
+    )
+    
+    import urllib.parse
+    encoded_msg = urllib.parse.quote(msg)
+    return f"https://wa.me/{final_num}?text={encoded_msg}"
 
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
@@ -424,7 +439,10 @@ if start_idx:
 
                 # --- 4. DATA ENRICHMENT & TABLE DISPLAY ---
                 if 'Phone' in df.columns:
-                    df['WhatsApp Link'] = df['Phone'].apply(format_wa_link)
+                    df['WhatsApp Link'] = df.apply(
+                        lambda row: format_wa_link(row['Phone'], row.get('Name', '')), 
+                        axis=1
+                    )
 
                 # Define logical order: Identity -> Position -> KBLI -> Other
                 ordered_cols = [
