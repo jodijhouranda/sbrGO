@@ -11,15 +11,12 @@ if sys.platform == 'win32':
 
 @st.cache_resource
 def install_playwright():
-    """Install Playwright browsers if they are missing."""
-    with st.spinner("Installing Playwright browsers..."):
-        try:
-            # Only install chromium to save time/space
-            os.system("playwright install chromium")
-            return True
-        except Exception as e:
-            st.error(f"Failed to install Playwright: {e}")
-            return False
+    """Install Playwright browsers silently."""
+    try:
+        # Only install chromium to save time/space
+        os.system("playwright install chromium")
+    except:
+        pass
 
 # Ensure browsers are installed
 install_playwright()
@@ -32,15 +29,8 @@ st.markdown("Scrape business data from Google Maps easily.")
 st.sidebar.markdown("---")
 st.sidebar.header("Advanced Settings")
 
-# Detect if running on Streamlit Cloud
-# Streamlit Cloud environment usually has these variables
-is_cloud = os.environ.get("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud" or os.environ.get("HOSTNAME") == "streamlit"
-
-# Local: default to "show browser" (headed mode)
-show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping. Note: This usually only works locally and will cause an error on Streamlit Cloud.")
-
-if is_cloud and show_browser:
-    st.sidebar.warning("⚠️ You are on Streamlit Cloud. 'Show Browser' will likely fail because the cloud environment has no display. Uncheck this if you get an error.")
+# User can choose to show browser or not, default to True
+show_browser = st.sidebar.checkbox("👀 Show Browser (Headed Mode)", value=True, help="See the browser while it's scraping.")
 
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
