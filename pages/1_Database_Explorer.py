@@ -104,11 +104,38 @@ st.markdown('<p class="subtitle">Manage and Analyze your saved business data.</p
 df_db = fetch_db_data()
 
 if df_db is not None and not df_db.empty:
-    # 1. METRICS AT THE TOP
-    st.metric("Total Records Found", len(df_db))
-    st.markdown("---")
+    # --- PREMIUM DASHBOARD METRICS ---
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); 
+                padding: 20px; border-radius: 15px; margin-bottom: 25px; color: white;">
+        <h3 style="margin:0; color: white; font-size: 1.5rem;">📊 Data Insights Dashboard</h3>
+        <p style="margin:0; opacity: 0.8; font-size: 0.9rem;">Real-time analytics from your database</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # 2. TABLE (DATA EDITOR)
+    m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
+    
+    with m_col1:
+        st.metric("Total Records", f"{len(df_db):,}")
+    with m_col2:
+        avg_rating = pd.to_numeric(df_db['Rating'], errors='coerce').mean()
+        st.metric("Avg Rating", f"{avg_rating:.2f} ⭐")
+    with m_col3:
+        total_rev = pd.to_numeric(df_db['Reviews'], errors='coerce').sum()
+        st.metric("Total Reviews", f"{total_rev:,.0f}")
+    with m_col4:
+        unique_cities = df_db['Kabupaten'].nunique() if 'Kabupaten' in df_db.columns else 0
+        st.metric("Cities Covered", f"{unique_cities}")
+    with m_col5:
+        top_cat_val = str(df_db['Kategori OSM'].mode()[0]) if not df_db['Kategori OSM'].empty else "N/A"
+        st.metric("Top Category", top_cat_val[:10] + "..." if len(top_cat_val) > 10 else top_cat_val)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- TABLE SECTION ---
+    st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Master Data Storage</p>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">📋 Scraped Results Table</p>', unsafe_allow_html=True)
+
     df_display = df_db.copy()
     df_display.insert(0, "Select", False)
     
@@ -117,7 +144,10 @@ if df_db is not None and not df_db.empty:
         column_config={
             "Select": st.column_config.CheckboxColumn("Select", default=False),
             "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape"),
-            "URL": st.column_config.LinkColumn("G-Maps")
+            "URL": st.column_config.LinkColumn("G-Maps"),
+            "WhatsApp Link": st.column_config.LinkColumn("WA", width="small"),
+            "Rating": st.column_config.NumberColumn("Rating", format="%.1f ⭐"),
+            "Reviews": st.column_config.NumberColumn("Reviews", format="%d")
         },
         disabled=[c for c in df_display.columns if c != "Select"],
         hide_index=True,
@@ -125,8 +155,9 @@ if df_db is not None and not df_db.empty:
         key="db_editor"
     )
     
-    # 3. BUTTONS BELOW THE TABLE
-    act_col1, act_col2 = st.columns(2)
+    # --- ACTION BUTTONS ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    act_col1, act_col2, act_col3 = st.columns([1, 1, 1])
     
     with act_col1:
         if st.button("🔄 Remove Duplicates", use_container_width=True):
@@ -147,23 +178,23 @@ if df_db is not None and not df_db.empty:
             use_container_width=True
         )
 
-    # Delete Action
-    selected_rows = edited_df[edited_df["Select"] == True]
-    if not selected_rows.empty:
-        st.warning(f"Terpilih {len(selected_rows)} data untuk dihapus.")
-        if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
-            to_delete = []
-            for _, row in selected_rows.iterrows():
-                to_delete.append((row["Name"], row["Latitude"], row["Longitude"]))
-            
-            if delete_records(to_delete):
-                st.success(f"Berhasil menghapus {len(to_delete)} data.")
-                time.sleep(1)
-                st.rerun()
-
-    # 4. MAP AT THE BOTTOM
+    with act_col3:
+        selected_rows = edited_df[edited_df["Select"] == True]
+        if not selected_rows.empty:
+            if st.button(f"🗑️ Delete ({len(selected_rows)})", type="primary", use_container_width=True):
+                to_delete = []
+                for _, row in selected_rows.iterrows():
+                    to_delete.append((row["Name"], row["Latitude"], row["Longitude"]))
+                
+                if delete_records(to_delete):
+                    st.success("Records deleted!")
+                    time.sleep(1)
+                    st.rerun()
+    
+    # --- MAP AT THE BOTTOM ---
     st.markdown("---")
-    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b;">🗺️ Database Distribution Map</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Spatial Distribution</p>', unsafe_allow_html=True)
+    st.markdown('<p style="font-size:1.5rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Database Coverage Map</p>', unsafe_allow_html=True)
     
     import folium
     from streamlit_folium import st_folium
@@ -176,11 +207,11 @@ if df_db is not None and not df_db.empty:
     if not map_df.empty:
         avg_lat = map_df['latitude'].mean()
         avg_lng = map_df['longitude'].mean()
-        m = folium.Map(location=[avg_lat, avg_lng], zoom_start=12)
+        m = folium.Map(location=[avg_lat, avg_lng], zoom_start=6, control_scale=True)
         for _, row in map_df.iterrows():
             folium.Marker(
                 [row['latitude'], row['longitude']],
-                popup=f"{row['Name']} ({row.get('Rating', 'N/A')})",
+                popup=f"{row['Name']}<br>⭐ {row.get('Rating', 'N/A')}",
                 tooltip=row['Name'],
                 icon=folium.Icon(color="indigo", icon="info-sign")
             ).add_to(m)
