@@ -368,7 +368,11 @@ def show_scraper_page():
             if not map_df.empty:
                 m = folium.Map(location=[map_df['lat'].mean(), map_df['lng'].mean()], zoom_start=13)
                 for _, row in map_df.iterrows():
-                    folium.Marker([row['lat'], row['lng']], popup=row['Name'], icon=folium.Icon(color="indigo")).add_to(m)
+                    wa_link = format_wa_link(row['Phone']) if 'Phone' in row else None
+                    wa_html = f'<br><a href="{wa_link}" target="_blank">💬 WhatsApp</a>' if wa_link else ""
+                    gmap_html = f'<br><a href="{row["URL"]}" target="_blank">📍 Google Maps</a>' if 'URL' in row else ""
+                    popup_html = f"<b>{row['Name']}</b>{wa_html}{gmap_html}"
+                    folium.Marker([row['lat'], row['lng']], popup=popup_html, icon=folium.Icon(color="indigo")).add_to(m)
                 st_folium(m, width="100%", height=500, returned_objects=[], key="results_map_v2")
 
         if 'Phone' in df.columns: df['WhatsApp Link'] = df['Phone'].apply(format_wa_link)
