@@ -31,12 +31,18 @@ st.sidebar.header("Advanced Settings")
 
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
-# Try to get API key from secrets
+# Try to get API key from secrets (support multiple formats)
 secret_api_key = st.secrets.get("OPENAI_API_KEY")
+
+# Support the [openai] section format found in user's secrets
+if not secret_api_key:
+    openai_secrets = st.secrets.get("openai", {})
+    if isinstance(openai_secrets, dict):
+        secret_api_key = openai_secrets.get("openapi") or openai_secrets.get("api_key")
 
 if secret_api_key:
     st.sidebar.success("✅ API Key loaded from secrets")
-    api_key = secret_api_key.strip()
+    api_key = str(secret_api_key).strip()
 else:
     api_key_input = st.sidebar.text_input(
         "OpenAI API Key", 
