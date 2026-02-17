@@ -9,16 +9,7 @@ if not st.session_state.get('is_superuser', False):
     st.error("🚫 Access Denied. Only superusers can access this page.")
     st.stop()
 
-# Premium UI Styling
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
-    html, body, [data-testid="stStandardType"] { font-family: 'Outfit', sans-serif; }
-    .stApp { background: radial-gradient(circle at top right, #f8f9ff 0%, #ffffff 100%); }
-    .stButton > button { border-radius: 8px; font-weight: 600; }
-    .user-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 15px; border-left: 5px solid #6366f1; }
-</style>
-""", unsafe_allow_html=True)
+# Admin UI Layout
 
 # Connection Fix
 cert_path = os.path.abspath("isrgrootx1.pem")

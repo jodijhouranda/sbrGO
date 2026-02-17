@@ -237,8 +237,8 @@ def save_to_tidb(df):
         with st.expander("Show detailed error"):
             st.code(str(e))
 
-def show_scraper_page():
-    # Premium UI Styling
+def apply_global_styles():
+    """Apply consistent premium styling across all pages."""
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
@@ -258,6 +258,7 @@ def show_scraper_page():
     </style>
     """, unsafe_allow_html=True)
 
+def show_scraper_page():
     st.markdown('<div class="logo-container"><p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p></div>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
@@ -383,7 +384,7 @@ def show_scraper_page():
     st.markdown("<br><p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ by JJS</p>", unsafe_allow_html=True)
 
 # Main Multi-page Entry Point
-st.set_page_config(page_title="NoSBRGo", page_icon="https://www.google.com/favicon.ico", layout="wide")
+st.set_page_config(page_title="NoSBRGo", page_icon="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png", layout="wide")
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'username' not in st.session_state: st.session_state.username = None
@@ -392,6 +393,9 @@ if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
 if not st.session_state.authenticated:
     show_login_page()
 else:
+    # Apply Persistent Styling
+    apply_global_styles()
+    
     # Persistent Sidebar Logout
     with st.sidebar:
         st.markdown(f"👤 Logged in as: **{st.session_state.username}**")

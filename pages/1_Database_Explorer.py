@@ -5,16 +5,7 @@ import io
 import time
 import os
 
-# Premium UI Styling
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
-    html, body, [data-testid="stStandardType"] { font-family: 'Outfit', sans-serif; }
-    .stApp { background: radial-gradient(circle at top right, #f8f9ff 0%, #ffffff 100%); }
-    .subtitle { color: #94a3b8; font-size: 0.65rem !important; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-top: -10px; margin-bottom: 3rem; opacity: 0.6; }
-    .stButton > button { background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%); color: white !important; border: none; padding: 0.6rem 2rem; border-radius: 8px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2); }
-</style>
-""", unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Search and manage your collected business data.</p>', unsafe_allow_html=True)
 
 # Connection Fix
 cert_path = os.path.abspath("isrgrootx1.pem")
