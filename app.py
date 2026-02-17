@@ -141,11 +141,10 @@ def get_location_description(lat, lng):
         pass
     return None
 
-# Geolocation state
-if 'user_lat' not in st.session_state:
-    st.session_state.user_lat = None
-if 'user_lng' not in st.session_state:
-    st.session_state.user_lng = None
+# Geolocation & UI state
+if 'user_lat' not in st.session_state: st.session_state.user_lat = None
+if 'user_lng' not in st.session_state: st.session_state.user_lng = None
+if 'use_location' not in st.session_state: st.session_state.use_location = False
 
 # Unified Main UI layout
 main_container = st.container(border=True)
@@ -161,6 +160,10 @@ with main_container:
     
     # Pre-calculate modified query for preview
     modified_query = search_term
+    if st.session_state.use_location and st.session_state.user_lat and st.session_state.user_lng:
+        loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+        if loc_description:
+            modified_query = f"{search_term} di sekitar {loc_description}"
     
     # 2. Configuration
     conf_col1, conf_col2 = st.columns(2)
@@ -178,7 +181,10 @@ with main_container:
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
     
     with conf_col2:
-        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=False)
+        # Use session_state to track toggle
+        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location, key="loc_toggle")
+        st.session_state.use_location = use_location
+        
         if use_location:
             # Custom HTML/JS to get geolocation
             st.components.v1.html(
@@ -216,13 +222,15 @@ with main_container:
                 st.session_state.user_lat = query_params["lat"]
                 st.session_state.user_lng = query_params["lng"]
                 
-                # Immediate Preview of refined query
-                loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-                if loc_description:
-                    modified_query = f"{search_term} di sekitar {loc_description}"
-                    st.markdown(f'<p style="color:#6366f1; font-size:0.85rem; font-weight:500;">🔍 Akan mencari: <i>"{modified_query}"</i></p>', unsafe_allow_html=True)
+                if modified_query != search_term:
+                    st.markdown(f"""
+                        <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent); border-left: 4px solid #6366f1; padding: 12px; border-radius: 8px; margin-top: 10px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.05);">
+                            <p style="color:#4338ca; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin:0;">🎯 Keyword Lokasi Aktif:</p>
+                            <p style="color:#1e293b; font-size:1rem; font-weight:500; margin:4px 0 0 0;">{modified_query}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
+                    st.info(f"📍 Menunggu resolusi alamat GPS...")
 
     st.markdown("---")
     start_idx = st.button("🚀 Start Extraction", use_container_width=True)
@@ -274,7 +282,9 @@ if start_idx:
                 # --- 3. MAP VISUALIZATION ---
                 if show_map:
                     st.markdown("---")
-                    st.markdown("### 🗺️ Business Locations Mapping")
+                    st.markdown('<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;">Mapping Distribution</p>', unsafe_allow_html=True)
+                    st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b; margin-top:0;">🗺️ Business Locations Mapping</p>', unsafe_allow_html=True)
+                    
                     # Filter rows with valid Lat/Lng and convert to numeric
                     map_df = df.copy()
                     map_df['latitude'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
