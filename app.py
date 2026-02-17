@@ -154,15 +154,31 @@ if 'loc_step' not in st.session_state: st.session_state.loc_step = 0 # 0: None, 
 def location_progress_dialog():
     if not st.session_state.user_lat:
         st.write("### Tahap 1/2: Mengunci Titik GPS")
-        st.markdown("Mohon beri izin lokasi jika muncul permintaan dari browser.")
-        st.progress(40, text="Sedang menunggu sinyal satelit...")
+        st.info("💡 Browser mewajibkan klik tombol di bawah untuk mengizinkan akses GPS.")
         
-        # Automatic GPS Script inside Dialog
+        # HTML Component with User-Gesture Trigger
         st.components.v1.html(
             """
+            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; font-family: sans-serif;">
+                <button id="gpsBtn" onclick="getLoc()" style="
+                    background: #6366f1; color: white; border: none; padding: 12px 20px; 
+                    border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%;
+                    box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2); transition: all 0.2s;
+                ">📍 IZINKAN & AMBIL GPS</button>
+                <div id="status" style="font-size: 0.85rem; color: #64748b; font-weight: 600;">Status: Menunggu Klik...</div>
+            </div>
             <script>
                 function getLoc() {
+                    const btn = document.getElementById('gpsBtn');
+                    const status = document.getElementById('status');
+                    
+                    btn.disabled = true;
+                    btn.style.background = '#94a3b8';
+                    btn.innerText = "⏳ Sedang Menghubungkan...";
+                    status.innerText = "Status: Meminta izin lokasi...";
+                    
                     navigator.geolocation.getCurrentPosition(function(pos) {
+                        status.innerText = "Status: Lokasi terkunci! Sinkronisasi...";
                         const lat = pos.coords.latitude.toFixed(6);
                         const lng = pos.coords.longitude.toFixed(6);
                         const params = new URLSearchParams(window.parent.location.search);
@@ -170,29 +186,36 @@ def location_progress_dialog():
                         params.set('lng', lng);
                         window.parent.location.search = params.toString();
                     }, function(err) {
-                        console.log("GPS Seek: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
+                        btn.disabled = false;
+                        btn.style.background = '#f43f5e';
+                        btn.innerText = "❌ Gagal: " + err.message;
+                        status.innerText = "Error: " + err.message + " (Klik lagi untuk coba)";
+                    }, {enableHighAccuracy: true, timeout: 10000, maximumAge: 0});
                 }
-                setTimeout(getLoc, 500); // Small delay to ensure dialog is ready
             </script>
-            """, height=0
+            """, height=100
         )
+        st.progress(25, text="Menunggu interaksi pengguna...")
     else:
         st.write("### Tahap 2/2: Menerjemahkan Alamat")
-        st.markdown(f"Koordinat terkunci: `{st.session_state.user_lat}, {st.session_state.user_lng}`")
-        st.progress(85, text="Mencari nama jalan & wilayah...")
+        st.markdown(f"**Koordinat didapat:** `{st.session_state.user_lat}, {st.session_state.user_lng}`")
+        st.progress(85, text="Sedang menerjemahkan titik ke nama jalan/wilayah...")
         
         # Server-side address resolution
-        with st.spinner("Mencari alamat..."):
+        with st.spinner("📦 Menghubungi server geocoding..."):
             addr = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
             if addr:
                 st.session_state.resolved_address = addr
-                st.success(f"Ditemukan: **{addr}**")
-                time.sleep(1)
-                st.rerun() # This will close dialog because resolved_address is now set
+                st.success(f"📍 Alamat Terkunci: **{addr}**")
+                time.sleep(1.2)
+                st.rerun() 
             else:
-                st.error("Gagal mendapatkan alamat. Silakan input manual.")
-                if st.button("Tutup"): st.rerun()
+                st.error("Gagal mendapatkan nama wilayah. Coba lagi atau masukkan manual di dashboard.")
+                if st.button("❌ Batalkan & Input Manual"):
+                    st.session_state.user_lat = None
+                    st.session_state.user_lng = None
+                    st.session_state.use_location_toggle = False
+                    st.rerun()
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
