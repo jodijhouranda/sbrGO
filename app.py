@@ -29,14 +29,9 @@ st.set_page_config(page_title="Google Maps Scraper", page_icon="🗺️", layout
 st.title("🗺️ Google Maps Scraper")
 st.markdown("Scrape business data from Google Maps easily.")
 
-# Sidebar for configuration
-st.sidebar.header("Configuration")
-search_term = st.sidebar.text_input("Search Term", placeholder="e.g., Coffee in Jakarta")
-total_results = st.sidebar.number_input("Total Results", min_value=1, max_value=1000, value=10)
-headless = st.sidebar.checkbox("Headless Mode (Hidden Browser)", value=True)
-
 st.sidebar.markdown("---")
-st.sidebar.header("OpenAI Enhancement")
+st.sidebar.header("Advanced Settings")
+headless = st.sidebar.checkbox("Show Browser (Disable Headless)", value=False)
 use_gpt = st.sidebar.checkbox("Enable GPT Enhancement", value=True)
 
 # Try to get API key from secrets
@@ -52,7 +47,27 @@ else:
         help="Enter your OpenAI API key here if not configured in secrets.toml"
     )
 
-if st.sidebar.button("Start Scraping"):
+st.sidebar.markdown("---")
+with st.sidebar.expander("ℹ️ Usage Tips & Safety"):
+    st.markdown("""
+    **Best Practices:**
+    - **Total Results**: Start with 10-20 to test. Large numbers take time.
+    - **Show Browser**: Recommended for local use to see progress.
+    - **GPT**: Provides better KBLI and addressing data.
+    
+    **Safety:**
+    - Avoid frequent large scrapes to prevent IP blocks.
+    - The tool includes random delays to behave naturally.
+    """)
+
+# Main UI layout
+col1, col2 = st.columns([2, 1])
+with col1:
+    search_term = st.text_input("What are you looking for?", placeholder="e.g., Coffee in Jakarta")
+with col2:
+    total_results = st.number_input("Results Count", min_value=1, max_value=1000, value=10)
+
+if st.button("🚀 Start Scraping", use_container_width=True):
     if not search_term:
         st.error("Please enter a search term.")
     elif use_gpt and not api_key:
@@ -67,14 +82,24 @@ if st.sidebar.button("Start Scraping"):
         try:
             scraper = GoogleMapsScraper(api_key=api_key if use_gpt else None)
             
+            # Progress callback for the UI
+            def update_progress(current, total, message):
+                percent = int((current / total) * 100)
+                progress_bar.progress(percent)
+                status_text.text(f"Processing... {message}")
+
             # Run scraper
             with st.spinner("Browser is running..."):
-                results = scraper.run(search_term, total_results, headless)
+                # On Streamlit Cloud, headless is usually required. 
+                # Locally, the user choice matters.
+                # However, the user requested "default headless tidak dicentang"
+                # which means headless=False (show browser).
+                results = scraper.run(search_term, total_results, not headless, progress_callback=update_progress)
             
             if results:
                 if use_gpt:
                     with st.spinner("Enhancing data with GPT..."):
-                        scraper.process_with_gpt()
+                        scraper.process_with_gpt(progress_callback=update_progress)
                         results = scraper.results # Get updated results
                 
                 df = pd.DataFrame(results)

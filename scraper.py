@@ -13,7 +13,7 @@ class GoogleMapsScraper:
         self.api_key = api_key
         self.client = OpenAI(api_key=api_key) if api_key else None
 
-    def run(self, search_term, total_results=10, headless=False):
+    def run(self, search_term, total_results=10, headless=False, progress_callback=None):
         print(f"Starting scraper for query: '{search_term}' target: {total_results} results")
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless)
@@ -96,6 +96,8 @@ class GoogleMapsScraper:
                 print(f"[{i+1}/{len(urls)}] Scraping: {url}")
                 try:
                     self.extract_details(page, url)
+                    if progress_callback:
+                        progress_callback(i + 1, len(urls), f"Scraping: {i+1}/{len(urls)}")
                 except Exception as e:
                     print(f"Error scraping {url}: {e}")
                 
@@ -103,7 +105,7 @@ class GoogleMapsScraper:
         
         return self.results
 
-    def process_with_gpt(self, api_key=None):
+    def process_with_gpt(self, api_key=None, progress_callback=None):
         if api_key:
             self.api_key = api_key
             self.client = OpenAI(api_key=api_key)
@@ -152,6 +154,8 @@ class GoogleMapsScraper:
                     "Kecamatan": gpt_data.get("kecamatan", "N/A"),
                     "Kelurahan": gpt_data.get("kelurahan", "N/A")
                 })
+                if progress_callback:
+                    progress_callback(i + 1, len(self.results), f"GPT Enhancing: {i+1}/{len(self.results)}")
             except Exception as e:
                 print(f"Error processing {item['Name']} with GPT: {e}")
                 item.update({
