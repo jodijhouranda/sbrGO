@@ -127,67 +127,74 @@ st.markdown('<p class="subtitle">Scrape business data from Google Maps in second
 
 @st.cache_data(show_spinner=False)
 def get_location_description(lat, lng):
-    """Resolve coordinates to detailed address (Jalan/Desa/Kec + Kabupaten)."""
+    """Mengubah koordinat menjadi alamat lengkap (Jalan, Kelurahan, Kecamatan, Kota)."""
     if not lat or not lng: return None
     try:
         headers = {'User-Agent': 'sbrGO-App/1.0'}
-        # Menggunakan zoom 18 untuk detail level jalan/bangunan
-        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18"
+        # addressdetails=1 wajib agar kita bisa pilah-pilah komponennya
+        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
         res = requests.get(geo_url, headers=headers, timeout=5)
         
         if res.status_code == 200:
             data = res.json()
             addr = data.get('address', {})
-            
-            # 1. Collect address components in order of specificity
             parts = []
-            
-            # Nama Tempat / Bangunan (Point of Interest)
-            place = addr.get('amenity') or addr.get('building') or addr.get('shop') or addr.get('office') or addr.get('tourism')
-            if place: parts.append(place)
-            
-            # Jalan / Detail Lokasi + No Rumah
-            road = addr.get('road') or addr.get('street') or addr.get('residential') or addr.get('pedestrian') or addr.get('path')
-            house_no = addr.get('house_number')
-            if road:
-                full_road = f"{road} No. {house_no}" if house_no else road
-                parts.append(full_road)
-            
-            # Desa / Kelurahan / Lingkungan (RW/RT level)
-            village = addr.get('village') or addr.get('hamlet') or addr.get('neighbourhood') or addr.get('quarter')
-            if village: parts.append(village)
-            
-            # Kecamatan / Distrik
-            suburb = addr.get('suburb') or addr.get('city_district') or addr.get('town')
-            if suburb: parts.append(suburb)
-            
-            # Kabupaten / Kota
-            kabupaten = addr.get('city') or addr.get('regency') or addr.get('municipality') or addr.get('county')
-            if kabupaten: parts.append(kabupaten)
 
-            # 2. Join results and handle empty fallback
+            # 1. BAGIAN JALAN / BANGUNAN (Paling Spesifik)
+            jalan = (
+                addr.get('road') or 
+                addr.get('street') or 
+                addr.get('pedestrian') or 
+                addr.get('path') or
+                addr.get('industrial') or
+                addr.get('residential')
+            )
+            nomor = addr.get('house_number')
+
+            if jalan:
+                # Format: "Jalan Malioboro No. 12" atau "Jalan Malioboro"
+                full_jalan = f"{jalan} No. {nomor}" if nomor else jalan
+                parts.append(full_jalan)
+            else:
+                # FORCE DETAIL: Jika jalan tidak ada, ambil nama tempat/gedung dari display_name
+                # Contoh: display_name = "Plaza Ambarrukmo, Jalan Laksda..., Sleman..."
+                # Kita ambil "Plaza Ambarrukmo"-nya saja.
+                display_name = data.get('display_name', '')
+                if display_name:
+                    first_part = display_name.split(',')[0].strip()
+                    # Cek agar tidak duplikat dengan nama kecamatan/kota
+                    if first_part not in [addr.get('suburb'), addr.get('city')]:
+                        parts.append(first_part)
+
+            # 2. BAGIAN WILAYAH (Desa/Kelurahan & Kecamatan)
+            # Di Indonesia struktur OSM biasanya: 
+            # village/quarter = Kelurahan/Desa
+            # suburb/city_district = Kecamatan
+            kelurahan = addr.get('village') or addr.get('quarter') or addr.get('hamlet') or addr.get('neighbourhood')
+            kecamatan = addr.get('suburb') or addr.get('city_district') or addr.get('district')
+            
+            if kelurahan: parts.append(kelurahan)
+            if kecamatan and kecamatan != kelurahan: parts.append(kecamatan)
+
+            # 3. BAGIAN KOTA / KABUPATEN
+            kota = (
+                addr.get('city') or 
+                addr.get('regency') or 
+                addr.get('municipality') or 
+                addr.get('county')
+            )
+            if kota and kota != kecamatan: parts.append(kota)
+
+            # Gabungkan semua bagian yang ditemukan
             if parts:
-                # Remove duplicates while preserving order
-                seen = set()
-                unique_parts = []
-                for p in parts:
-                    if p and p.lower() not in seen:
-                        unique_parts.append(p)
-                        seen.add(p.lower())
-                return ", ".join(unique_parts).strip()
+                return ", ".join(parts)
             
-            # Absolute Fallback: split display_name
-            if 'display_name' in data:
-                # Grab the first 2-3 parts of the display name as a best effort
-                display_parts = [p.strip() for p in data['display_name'].split(',')]
-                return ", ".join(display_parts[:3]) if len(display_parts) > 2 else display_parts[0]
+            # Fallback terakhir: Ambil display name mentah
+            return data.get('display_name', f"{lat}, {lng}")
 
-            return f"{lat}, {lng}"
-            
     except Exception:
         pass
-        
-    # Fallback jika gagal total
+    
     return f"{lat}, {lng}"
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
