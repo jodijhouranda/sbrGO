@@ -7,7 +7,6 @@ import os
 import asyncio
 import sys
 import time
-from streamlit_js_eval import streamlit_js_eval
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -212,13 +211,23 @@ with main_container:
             st.rerun()
 
     if use_location and not st.session_state.resolved_address:
-        # Direct raw coordinate capture
-        loc = streamlit_js_eval(data_string='get_geolocation', key='get_geo_simple')
-        if loc and 'coords' in loc:
-            st.session_state.user_lat = str(round(loc['coords']['latitude'], 6))
-            st.session_state.user_lng = str(round(loc['coords']['longitude'], 6))
-            st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
-            st.rerun()
+        # Instant URL Handshake Script
+        st.components.v1.html(
+            """
+            <script>
+                navigator.geolocation.getCurrentPosition(function(pos) {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lng = pos.coords.longitude.toFixed(6);
+                    const params = new URLSearchParams(window.parent.location.search);
+                    params.set('lat', lat);
+                    params.set('lng', lng);
+                    window.parent.location.search = params.toString();
+                }, function(err) {
+                    console.error("GPS Error: " + err.message);
+                }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
+            </script>
+            """, height=0
+        )
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
