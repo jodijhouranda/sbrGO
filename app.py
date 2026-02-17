@@ -127,75 +127,85 @@ st.markdown('<p class="subtitle">Scrape business data from Google Maps in second
 
 @st.cache_data(show_spinner=False)
 def get_location_description(lat, lng):
-    """Mengubah koordinat menjadi alamat lengkap (Jalan, Kelurahan, Kecamatan, Kota)."""
+    """
+    Mencari alamat dengan strategi 'Smart Fallback':
+    1. Coba zoom 18 (presisi).
+    2. Jika tidak ada jalan, coba zoom 16 (paksa cari jalan terdekat).
+    """
     if not lat or not lng: return None
-    try:
-        headers = {'User-Agent': 'sbrGO-App/1.0'}
-        # addressdetails=1 wajib agar kita bisa pilah-pilah komponennya
-        geo_url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom=18&addressdetails=1"
-        res = requests.get(geo_url, headers=headers, timeout=5)
-        
-        if res.status_code == 200:
-            data = res.json()
-            addr = data.get('address', {})
-            parts = []
-
-            # 1. BAGIAN JALAN / BANGUNAN (Paling Spesifik)
-            jalan = (
-                addr.get('road') or 
-                addr.get('street') or 
-                addr.get('pedestrian') or 
-                addr.get('path') or
-                addr.get('industrial') or
-                addr.get('residential')
-            )
-            nomor = addr.get('house_number')
-
-            if jalan:
-                # Format: "Jalan Malioboro No. 12" atau "Jalan Malioboro"
-                full_jalan = f"{jalan} No. {nomor}" if nomor else jalan
-                parts.append(full_jalan)
-            else:
-                # FORCE DETAIL: Jika jalan tidak ada, ambil nama tempat/gedung dari display_name
-                # Contoh: display_name = "Plaza Ambarrukmo, Jalan Laksda..., Sleman..."
-                # Kita ambil "Plaza Ambarrukmo"-nya saja.
-                display_name = data.get('display_name', '')
-                if display_name:
-                    first_part = display_name.split(',')[0].strip()
-                    # Cek agar tidak duplikat dengan nama kecamatan/kota
-                    if first_part not in [addr.get('suburb'), addr.get('city')]:
-                        parts.append(first_part)
-
-            # 2. BAGIAN WILAYAH (Desa/Kelurahan & Kecamatan)
-            # Di Indonesia struktur OSM biasanya: 
-            # village/quarter = Kelurahan/Desa
-            # suburb/city_district = Kecamatan
-            kelurahan = addr.get('village') or addr.get('quarter') or addr.get('hamlet') or addr.get('neighbourhood')
-            kecamatan = addr.get('suburb') or addr.get('city_district') or addr.get('district')
-            
-            if kelurahan: parts.append(kelurahan)
-            if kecamatan and kecamatan != kelurahan: parts.append(kecamatan)
-
-            # 3. BAGIAN KOTA / KABUPATEN
-            kota = (
-                addr.get('city') or 
-                addr.get('regency') or 
-                addr.get('municipality') or 
-                addr.get('county')
-            )
-            if kota and kota != kecamatan: parts.append(kota)
-
-            # Gabungkan semua bagian yang ditemukan
-            if parts:
-                return ", ".join(parts)
-            
-            # Fallback terakhir: Ambil display name mentah
-            return data.get('display_name', f"{lat}, {lng}")
-
-    except Exception:
-        pass
     
+    headers = {'User-Agent': 'sbrGO-App/1.0'}
+    
+    def fetch_nominatim(zoom_level):
+        try:
+            url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lng}&zoom={zoom_level}&addressdetails=1"
+            return requests.get(url, headers=headers, timeout=5).json()
+        except:
+            return None
+
+    # LEVEL 1: Coba detail tinggi (Zoom 18)
+    data = fetch_nominatim(18)
+    
+    # Fungsi pembantu untuk cek keberadaan jalan
+    def extract_address(data_json):
+        if not data_json: return None, None
+        addr = data_json.get('address', {})
+        
+        # Daftar key yang dianggap sebagai "Jalan"
+        jalan_keys = ['road', 'street', 'pedestrian', 'path', 'residential', 'living_street', 'trunk', 'primary', 'secondary']
+        
+        # Cari nama jalan
+        found_jalan = None
+        for k in jalan_keys:
+            if addr.get(k):
+                found_jalan = addr.get(k)
+                break
+        
+        # Ambil komponen lain
+        nomor = addr.get('house_number')
+        # Kelurahan/Desa
+        kelurahan = addr.get('village') or addr.get('quarter') or addr.get('neighbourhood') or addr.get('hamlet')
+        # Kecamatan
+        kecamatan = addr.get('suburb') or addr.get('city_district') or addr.get('district')
+        # Kota/Kab
+        kota = addr.get('city') or addr.get('regency') or addr.get('municipality') or addr.get('county')
+
+        return found_jalan, {'jalan': found_jalan, 'nomor': nomor, 'kelurahan': kelurahan, 'kecamatan': kecamatan, 'kota': kota}
+
+    jalan_name, components = extract_address(data)
+
+    # LEVEL 2: Jika jalan tidak ketemu di Zoom 18, paksa cari di Zoom 16 (Level Jalan Raya)
+    if not jalan_name:
+        data_fallback = fetch_nominatim(16)
+        jalan_fallback, components_fallback = extract_address(data_fallback)
+        if jalan_fallback:
+            components = components_fallback # Pakai data fallback karena jalannya ketemu
+            jalan_name = jalan_fallback
+
+    # RAKIT ALAMAT FINAL
+    parts = []
+    if components:
+        # 1. Jalan & Nomor
+        if components['jalan']:
+            full_jl = f"{components['jalan']}"
+            if components['nomor']: full_jl += f" No. {components['nomor']}"
+            parts.append(full_jl)
+        
+        # 2. Desa & Kecamatan
+        if components['kelurahan']: parts.append(components['kelurahan'])
+        if components['kecamatan'] and components['kecamatan'] != components['kelurahan']: 
+            parts.append(components['kecamatan'])
+            
+        # 3. Kota
+        if components['kota'] and components['kota'] != components['kecamatan']:
+            parts.append(components['kota'])
+            
+    if parts:
+        return ", ".join(parts)
+    
+    # Fallback terakhir banget jika API mati/kosong
     return f"{lat}, {lng}"
+
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
@@ -209,7 +219,7 @@ if "lat" in query_params and "lng" in query_params:
     st.session_state.user_lng = str(query_params["lng"])
     st.session_state.use_location_toggle = True
     
-    # Auto convert URL params to address if possible
+    # Auto convert URL params to address
     desc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
     st.session_state.resolved_address = desc if desc else f"{st.session_state.user_lat}, {st.session_state.user_lng}"
 
@@ -283,15 +293,14 @@ with main_container:
                 st.session_state.user_lat = str(lat)
                 st.session_state.user_lng = str(lng)
                 
-                # --- PERUBAHAN DISINI: Panggil OSM Convert ---
-                with st.spinner("Mengubah koordinat jadi alamat..."):
+                # --- PANGGIL FUNGSI REVERSE GEOCODING ---
+                with st.spinner("Mencari nama jalan terdekat..."):
                     human_address = get_location_description(lat, lng)
                 
                 if human_address:
                     st.session_state.resolved_address = human_address
                 else:
                     st.session_state.resolved_address = f"{lat}, {lng}"
-                # ---------------------------------------------
                 
                 st.success(f"✅ Lokasi terkunci: {st.session_state.resolved_address}")
                 time.sleep(0.5)
