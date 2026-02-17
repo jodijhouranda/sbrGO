@@ -139,45 +139,37 @@ def get_location_description(lat, lng):
             data = res.json()
             addr = data.get('address', {})
             
-            # 1. Cari detail spesifik (Jalan / Gedung / Lingkungan)
-            # Kita cek banyak key karena OSM tidak konsisten menaruh nama jalan
-            detail = (
-                addr.get('road') or 
-                addr.get('pedestrian') or 
-                addr.get('street') or
-                addr.get('residential') or
-                addr.get('path') or
-                addr.get('hamlet') or   # Dusun/RW
-                addr.get('village') or  # Desa/Kelurahan
-                addr.get('suburb') or   # Kecamatan
-                addr.get('neighbourhood') or
-                addr.get('public_building')
-            )
-
-            # 2. Cari Kabupaten / Kota
-            kabupaten = (
-                addr.get('city') or 
-                addr.get('regency') or 
-                addr.get('municipality') or 
-                addr.get('county') or 
-                addr.get('state_district') or
-                ""
-            )
-
-            # 3. Format Gabungan
+            # 1. Collect address components in order of specificity
             parts = []
-            if detail: 
-                parts.append(detail)
             
-            # Hindari duplikasi jika nama desa = nama kabupaten (jarang, tapi mungkin)
-            if kabupaten and kabupaten != detail:
-                parts.append(kabupaten)
+            # Jalan / Detail Lokasi
+            road = addr.get('road') or addr.get('pedestrian') or addr.get('street') or addr.get('residential')
+            if road: parts.append(road)
             
-            # Jika tetap kosong (jarang terjadi), ambil bagian pertama dari display_name panjang
-            if not parts and 'display_name' in data:
+            # Desa / Kelurahan
+            village = addr.get('village') or addr.get('hamlet') or addr.get('neighbourhood')
+            if village: parts.append(village)
+            
+            # Kecamatan
+            suburb = addr.get('suburb') or addr.get('city_district')
+            if suburb: parts.append(suburb)
+            
+            # Kabupaten / Kota
+            kabupaten = addr.get('city') or addr.get('regency') or addr.get('municipality') or addr.get('county')
+            if kabupaten: parts.append(kabupaten)
+
+            # 2. Join results and handle empty fallback
+            if parts:
+                # Remove duplicates if OSM returns the same name for different fields
+                seen = set()
+                unique_parts = [p for p in parts if not (p in seen or seen.add(p))]
+                return ", ".join(unique_parts).strip()
+            
+            # Fallback to display_name if parts is still empty
+            if 'display_name' in data:
                 return data['display_name'].split(',')[0]
 
-            return ", ".join(parts).strip()
+            return f"{lat}, {lng}"
             
     except Exception:
         pass
