@@ -41,11 +41,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+import os
+
+# Resolve absolute path for SSL CA
+cert_path = os.path.abspath("isrgrootx1.pem")
+
 try:
-    conn = st.connection('tidb', type='sql')
+    # We pass connect_args to ensure SSL is used correctly on Windows
+    conn = st.connection('tidb', type='sql', connect_args={
+        "ssl": {"ca": cert_path}
+    })
 except Exception as e:
     st.error(f"Gagal menghubungkan ke database: {e}")
-    st.info("Pastikan [connections.tidb] sudah terkonfigurasi di secrets.toml")
+    st.info("Pastikan [connections.tidb] sudah terkonfigurasi di secrets.toml dan isrgrootx1.pem tersedia.")
     st.stop()
 
 def fetch_db_data():
