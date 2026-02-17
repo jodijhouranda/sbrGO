@@ -213,12 +213,12 @@ with main_container:
 
     # Logika Pencarian Lokasi
     if use_location and not st.session_state.resolved_address:
-        st.info("🛰️ Mencari titik koordinat Anda...")
+        st.info("🛰️ Mencari titik koordinat Anda... (Izinkan akses lokasi)")
         
-        # Menggunakan streamlit_js_eval yang SUDAH ADA di import awal Anda
-        # Kita minta browser kirim latitude & longitude
+        # PERBAIKAN: Mengambil properti latitude & longitude secara eksplisit
+        # karena pos.coords seringkali tidak bisa diserialisasi langsung oleh browser
         location_data = streamlit_js_eval(
-            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve(pos.coords), err => resolve(null)))', 
+            js_expressions='new Promise(resolve => navigator.geolocation.getCurrentPosition(pos => resolve({latitude: pos.coords.latitude, longitude: pos.coords.longitude}), err => resolve(null)))', 
             key='geo_locator_final',
             want_output=True
         )
@@ -232,14 +232,12 @@ with main_container:
                 st.session_state.user_lng = str(lng)
                 st.session_state.resolved_address = f"{lat}, {lng}"
                 
-                st.success("✅ Lokasi terkunci!")
+                st.success(f"✅ Lokasi terkunci: {lat}, {lng}")
                 time.sleep(0.5)
                 st.rerun()
         else:
-            st.warning("⚠️ Izinkan akses lokasi di browser (pop-up kiri atas), lalu tunggu sebentar.")
-            # Tombol pancingan refresh agar Streamlit baca ulang data dari browser
-            if st.button("🔄 Klik ini jika lokasi sudah di-Allow"):
-                st.rerun()
+            # Tidak perlu warning yang mengganggu, cukup diam menunggu sampai browser merespon
+            pass
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
