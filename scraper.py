@@ -137,31 +137,49 @@ class GoogleMapsScraper:
             print("OpenAI client not initialized. Skipping GPT enhancement.")
             return
 
-        print(f"Enhancing {len(self.results)} results with GPT and Geocoding...")
+    def enrich_results(self, progress_callback=None):
+        """Perform reverse geocoding for all results."""
+        print(f"Enriching {len(self.results)} results with Geocoding...")
         for i, item in enumerate(self.results):
-            print(f"[{i+1}/{len(self.results)}] Processing: {item['Name']}")
-
-            # 1. Reverse Geocoding (More definite than GPT)
+            if progress_callback:
+                progress_callback(i + 1, len(self.results), f"Geocoding: {i+1}/{len(self.results)}")
+            
             geo_data = self.reverse_geocode(item.get('Latitude'), item.get('Longitude'))
             if geo_data:
                 item.update(geo_data)
+            
+            # Rate limit protection for OSM
+            time.sleep(1)
 
-            # 2. GPT for KBLI and fallback for missing geo fields
+    def process_with_gpt(self, api_key=None, progress_callback=None):
+        if api_key:
+            self.api_key = api_key
+            self.client = OpenAI(api_key=api_key)
+        
+        if not self.client:
+            print("OpenAI client not initialized. Skipping GPT enhancement.")
+            return
+
+        print(f"Enhancing {len(self.results)} results with GPT...")
+        for i, item in enumerate(self.results):
+            print(f"[{i+1}/{len(self.results)}] Processing: {item['Name']}")
+
+            # GPT for KBLI and fallback for missing geo fields
             prompt = f"""
             Analyze the following business information from Google Maps and provide structured data in JSON format.
             Business Name: {item['Name']}
             Address: {item['Address']}
-            Operation Hours: {item['Operation Hours']}
-            Latest Review Snippet: {item['Latest Review']}
-            Current Geo Data (Kab/Kec/Kel): {item.get('Kabupaten')}/{item.get('Kecamatan')}/{item.get('Kelurahan')}
+            Position: {item.get('Provinsi')}/{item.get('Kabupaten')}/{item.get('Kecamatan')}/{item.get('Kelurahan')}
             
             Return the following fields:
             - kbli: Predict the 5-digit KBLI 2020 code (Indonesian Standard Industrial Classification).
             - nama_kbli: The official title (Nama Resmi) for this KBLI code exactly as it appears in the OSS (Online Single Submission) system / KBLI 2020.
             - keterangan_kbli: Brief description/scope of the KBLI category based on OSS regulations.
-            - kabupaten: The Regency/City (Kabupaten/Kota). Use the provided Geo Data if available, otherwise extract from address.
-            - kecamatan: The District (Kecamatan). Use the provided Geo Data if available, otherwise extract from address.
-            - kelurahan: The Sub-district/Village (Kelurahan/Desa). Use the provided Geo Data if available, otherwise extract from address.
+            - provinsi: Use provided Geo Data if available, otherwise extract from address.
+            - kabupaten: The Regency/City (Kabupaten/Kota). Use provided Geo Data if available, otherwise extract from address.
+            - kecamatan: The District (Kecamatan). Use provided Geo Data if available, otherwise extract from address.
+            - kelurahan: The Sub-district/Village (Kelurahan/Desa). Use provided Geo Data if available, otherwise extract from address.
+            - kode_pos: The Postal Code. Use provided Geo Data if available, otherwise extract from address.
 
             Format the output as a clean JSON object.
             """
@@ -181,20 +199,21 @@ class GoogleMapsScraper:
                     raise ValueError("Empty response from GPT")
                     
                 gpt_data = json.loads(content)
+                
+                # Update with GPT data, prioritizing Geocoding data for position
                 item.update({
                     "KBLI": gpt_data.get("kbli", "N/A"),
                     "Nama Resmi KBLI": gpt_data.get("nama_kbli", "N/A"),
                     "Keterangan KBLI": gpt_data.get("keterangan_kbli", "N/A"),
+                    "Provinsi": gpt_data.get("provinsi", item.get("Provinsi", "N/A")),
                     "Kabupaten": gpt_data.get("kabupaten", item.get("Kabupaten", "N/A")),
                     "Kecamatan": gpt_data.get("kecamatan", item.get("Kecamatan", "N/A")),
-                    "Kelurahan": gpt_data.get("kelurahan", item.get("Kelurahan", "N/A"))
+                    "Kelurahan": gpt_data.get("kelurahan", item.get("Kelurahan", "N/A")),
+                    "Kode Pos": gpt_data.get("kode_pos", item.get("Kode Pos", "N/A"))
                 })
                 
-                # Rate limit protection for geocoding if needed
-                time.sleep(1) 
-                
                 if progress_callback:
-                    progress_callback(i + 1, len(self.results), f"Processing: {i+1}/{len(self.results)}")
+                    progress_callback(i + 1, len(self.results), f"AI Analysis: {i+1}/{len(self.results)}")
             except Exception as e:
                 error_msg = f"Error processing {item['Name']}: {str(e)}"
                 print(error_msg)

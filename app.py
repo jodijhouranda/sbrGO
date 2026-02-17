@@ -175,13 +175,35 @@ if start_idx:
                 results = scraper.run(search_term, total_results, True, progress_callback=update_progress)
             
             if results:
+                # Always enrich with official geographic data
+                with st.spinner("Enriching geographic data..."):
+                    scraper.enrich_results(progress_callback=update_progress)
+
                 if use_gpt:
-                    with st.spinner("AI is analyzing data..."):
+                    with st.spinner("AI is analyzing KBLI..."):
                         scraper.process_with_gpt(progress_callback=update_progress)
-                        results = scraper.results
+                
+                results = scraper.results
                 
                 df = pd.DataFrame(results)
                 
+                # Define logical order: Identity -> Position -> KBLI -> Other
+                ordered_cols = [
+                    "Name",                                     # Identity
+                    "Provinsi", "Kabupaten", "Kecamatan",       # Position
+                    "Kelurahan", "Kode Pos", "Address", 
+                    "Latitude", "Longitude", "URL",
+                    "KBLI", "Nama Resmi KBLI", "Keterangan KBLI", # KBLI
+                    "Rating", "Reviews", "Operation Hours",      # Other
+                    "Latest Review", "Phone", "Website"
+                ]
+                
+                # Filter out columns that might not exist (defensive)
+                final_cols = [c for c in ordered_cols if c in df.columns]
+                # Append any unexpected columns at the end
+                other_cols = [c for c in df.columns if c not in ordered_cols]
+                df = df[final_cols + other_cols]
+
                 st.markdown("---")
                 st.markdown(f'<p style="color:#64748b; font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:-10px;">Scrape Results</p>', unsafe_allow_html=True)
                 st.markdown(f'<p style="font-size:1.5rem; font-weight:600; color:#1e293b;">{search_term}</p>', unsafe_allow_html=True)
@@ -192,7 +214,8 @@ if start_idx:
                     column_config={
                         "URL": st.column_config.LinkColumn("G-Maps"),
                         "Website": st.column_config.LinkColumn("Website"),
-                        "Reviews": st.column_config.NumberColumn("Reviews", format="%d")
+                        "Reviews": st.column_config.NumberColumn("Reviews", format="%d"),
+                        "KBLI": st.column_config.TextColumn("Kode KBLI")
                     },
                     use_container_width=True
                 )
