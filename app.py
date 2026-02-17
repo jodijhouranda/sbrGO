@@ -405,9 +405,9 @@ else:
             handle_logout()
         st.markdown("---")
 
-    scraper_page = st.Page(show_scraper_page, title="Scraper", icon="🔍", default=True)
-    db_explorer_page = st.Page("pages/1_Database_Explorer.py", title="Database Explorer", icon="📦")
+    scraper_page = st.Page(show_scraper_page, title="Scraper", icon=":material/travel_explore:", default=True)
+    db_explorer_page = st.Page("pages/1_Database_Explorer.py", title="Database Explorer", icon=":material/grid_on:")
     pages = [scraper_page, db_explorer_page]
     if st.session_state.is_superuser:
-        pages.append(st.Page("pages/2_User_Management.py", title="User Management", icon="👥"))
+        pages.append(st.Page("pages/2_User_Management.py", title="User Management", icon=":material/manage_accounts:"))
     st.navigation(pages).run()
