@@ -142,16 +142,23 @@ def get_location_description(lat, lng):
             # 1. Collect address components in order of specificity
             parts = []
             
-            # Jalan / Detail Lokasi
-            road = addr.get('road') or addr.get('pedestrian') or addr.get('street') or addr.get('residential')
-            if road: parts.append(road)
+            # Nama Tempat / Bangunan (Point of Interest)
+            place = addr.get('amenity') or addr.get('building') or addr.get('shop') or addr.get('office') or addr.get('tourism')
+            if place: parts.append(place)
             
-            # Desa / Kelurahan
-            village = addr.get('village') or addr.get('hamlet') or addr.get('neighbourhood')
+            # Jalan / Detail Lokasi + No Rumah
+            road = addr.get('road') or addr.get('street') or addr.get('residential') or addr.get('pedestrian') or addr.get('path')
+            house_no = addr.get('house_number')
+            if road:
+                full_road = f"{road} No. {house_no}" if house_no else road
+                parts.append(full_road)
+            
+            # Desa / Kelurahan / Lingkungan (RW/RT level)
+            village = addr.get('village') or addr.get('hamlet') or addr.get('neighbourhood') or addr.get('quarter')
             if village: parts.append(village)
             
-            # Kecamatan
-            suburb = addr.get('suburb') or addr.get('city_district')
+            # Kecamatan / Distrik
+            suburb = addr.get('suburb') or addr.get('city_district') or addr.get('town')
             if suburb: parts.append(suburb)
             
             # Kabupaten / Kota
@@ -160,14 +167,20 @@ def get_location_description(lat, lng):
 
             # 2. Join results and handle empty fallback
             if parts:
-                # Remove duplicates if OSM returns the same name for different fields
+                # Remove duplicates while preserving order
                 seen = set()
-                unique_parts = [p for p in parts if not (p in seen or seen.add(p))]
+                unique_parts = []
+                for p in parts:
+                    if p and p.lower() not in seen:
+                        unique_parts.append(p)
+                        seen.add(p.lower())
                 return ", ".join(unique_parts).strip()
             
-            # Fallback to display_name if parts is still empty
+            # Absolute Fallback: split display_name
             if 'display_name' in data:
-                return data['display_name'].split(',')[0]
+                # Grab the first 2-3 parts of the display name as a best effort
+                display_parts = [p.strip() for p in data['display_name'].split(',')]
+                return ", ".join(display_parts[:3]) if len(display_parts) > 2 else display_parts[0]
 
             return f"{lat}, {lng}"
             
