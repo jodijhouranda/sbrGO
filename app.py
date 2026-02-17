@@ -125,8 +125,17 @@ def save_to_tidb(df):
         st.warning("No data to save.")
         return
     
+    # Resolve absolute path for SSL CA
+    cert_path = os.path.abspath("isrgrootx1.pem")
+    if not os.path.exists(cert_path):
+        st.error(f"SSL Certificate not found at {cert_path}")
+        return
+
     try:
-        conn = st.connection('tidb', type='sql')
+        # We pass connect_args to ensure SSL is used correctly on Windows
+        conn = st.connection('tidb', type='sql', connect_args={
+            "ssl": {"ca": cert_path}
+        })
     except Exception as e:
         st.error(f"Database connection error: {e}")
         return
@@ -138,7 +147,6 @@ def save_to_tidb(df):
             df_to_save['scraped_at'] = pd.Timestamp.now()
             
             # Save to table 'scraped_results'
-            # if_exists='append' to add to existing data
             df_to_save.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
             status.update(label="✅ Data successfully saved to TiDB!", state="complete")
         st.success(f"Successfully saved {len(df)} records to TiDB.")
