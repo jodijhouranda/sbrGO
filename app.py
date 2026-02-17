@@ -145,6 +145,50 @@ def get_location_description(lat, lng):
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
 if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
+if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
+if 'show_loc_dialog' not in st.session_state: st.session_state.show_loc_dialog = False
+
+@st.dialog("📍 Pencarian Lokasi")
+def show_location_dialog(search_term):
+    st.markdown(f"Sedang mengoptimalkan pencarian untuk: **{search_term}**")
+    
+    if not st.session_state.user_lat:
+        st.info("📡 Sedang meminta akses GPS dari browser...")
+        st.components.v1.html(
+            """
+            <script>
+                navigator.geolocation.getCurrentPosition(function(pos) {
+                    const lat = pos.coords.latitude.toFixed(6);
+                    const lng = pos.coords.longitude.toFixed(6);
+                    const params = new URLSearchParams(window.parent.location.search);
+                    if (params.get('lat') != lat) {
+                        params.set('lat', lat);
+                        params.set('lng', lng);
+                        window.parent.location.search = params.toString();
+                    }
+                }, function(err) {
+                    window.parent.alert("Gagal GPS: " + err.message);
+                }, {enableHighAccuracy: true, timeout: 5000});
+            </script>
+            """, height=0
+        )
+    else:
+        p_bar = st.progress(0, text="📡 Koordinat Terkunci...")
+        # Step 1: Resolve Address
+        p_bar.progress(40, text="🔍 Mencari nama jalan dan kabupaten...")
+        loc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+        
+        if loc:
+            st.session_state.resolved_address = loc
+            p_bar.progress(100, text="✅ Alamat Berhasil Ditemukan")
+            st.success(f"Target Lokasi: **{loc}**")
+        else:
+            st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
+            st.warning("⚠️ Berhasil dapet titik GPS, tapi gagal ambil nama jalan.")
+            
+        if st.button("Konfirmasi & Lanjutkan", use_container_width=True):
+            st.session_state.show_loc_dialog = False
+            st.rerun()
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
@@ -186,65 +230,32 @@ with main_container:
     is_detecting = False
     
     with conf_col2:
-        # Use session state to survive JS URL refreshes
+        # Toggle triggers the dialog if activated and no address is stored
         use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location_toggle, key="loc_toggle")
         st.session_state.use_location_toggle = use_location
         
         if use_location:
-            # --- 3. CALCULATE & DISPLAY MODIFIED QUERY ---
-            if st.session_state.user_lat and st.session_state.user_lng:
-                is_detecting = True
-                status_placeholder = st.empty()
-                progress_placeholder = st.empty()
+            # Trigger dialog if we don't have a resolved name yet
+            if not st.session_state.resolved_address:
+                show_location_dialog(search_term)
+            
+            # If address resolved, show the targeting card
+            if st.session_state.resolved_address:
+                modified_query = f"{search_term} di sekitar {st.session_state.resolved_address}"
+                st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
+                                border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-top: 10px; 
+                                box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
+                        <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
+                        <p style="color:#1e293b; font-size:1.05rem; font-weight:600; margin:0;">"{modified_query}"</p>
+                    </div>
+                """, unsafe_allow_html=True)
                 
-                with status_placeholder.container():
-                    st.markdown(f'<div style="font-size:0.8rem; color:#64748b;">📡 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}</div>', unsafe_allow_html=True)
-                    p_val = progress_placeholder.progress(30, text="🔍 Sedang menerjemahkan alamat...")
-                    
-                    # Resolve address
-                    loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-                    
-                    if loc_description:
-                        p_val.progress(100, text="✅ Alamat Teridentifikasi")
-                        modified_query = f"{search_term} di sekitar {loc_description}"
-                        st.markdown(f"""
-                            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
-                                        border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-top: 10px; 
-                                        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
-                                <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
-                                <p style="color:#1e293b; font-size:1.05rem; font-weight:600; margin:0;">"{modified_query}"</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        is_detecting = False
-                        # Clean up progress after successful load
-                        progress_placeholder.empty()
-                    else:
-                        progress_placeholder.empty()
-                        st.warning("⚠️ Gagal mendapatkan nama jalan. Menggunakan titik koordinat.")
-                        is_detecting = False
+                # Small status footer
+                if st.session_state.user_lat:
+                    st.markdown(f'<div style="font-size:0.65rem; color:#94a3b8; text-align:right; margin-top:5px;">GPS Sync: {st.session_state.user_lat}, {st.session_state.user_lng}</div>', unsafe_allow_html=True)
             else:
-                is_detecting = True
-                # Trigger JS detection
-                st.components.v1.html(
-                    """
-                    <div id="status" style="color: #64748b; font-size: 0.8rem; font-family: sans-serif;">📡 Mencari sinyal GPS...</div>
-                    <script>
-                        navigator.geolocation.getCurrentPosition(function(pos) {
-                            const lat = pos.coords.latitude.toFixed(6);
-                            const lng = pos.coords.longitude.toFixed(6);
-                            const params = new URLSearchParams(window.parent.location.search);
-                            // Avoid refresh if not changed
-                            if (params.get('lat') != lat) {
-                                params.set('lat', lat);
-                                params.set('lng', lng);
-                                window.parent.location.search = params.toString();
-                            }
-                        }, function(err) {
-                            document.getElementById('status').innerHTML = "❌ GPS Error: " + err.message;
-                        }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
-                    </script>
-                    """, height=30
-                )
+                is_detecting = True # Disable button if we are supposed to have location but don't yet
 
     st.markdown("---")
     # Disable button if detecting
