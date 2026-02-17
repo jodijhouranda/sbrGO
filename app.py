@@ -38,12 +38,12 @@ st.markdown("""
     
     /* Global Title Styling */
     .main-title {
-        font-size: 15vw !important; /* Massive scale relative to viewport width */
+        font-size: 8rem; /* Adjusted to a more balanced fixed size for stability */
         font-weight: 900;
         margin-bottom: 0px;
-        letter-spacing: 0px !important; /* Fix overlapping */
+        letter-spacing: -2px !important; 
         line-height: 1 !important;
-        text-shadow: 0 40px 120px rgba(99, 102, 241, 0.3);
+        text-shadow: 0 20px 60px rgba(99, 102, 241, 0.15);
         white-space: nowrap;
     }
     
@@ -55,9 +55,9 @@ st.markdown("""
         display: flex;
         align-items: center;
         width: 100%;
-        margin-top: -80px;
-        margin-bottom: 20px;
-        padding-top: 4rem;
+        margin-top: -60px;
+        margin-bottom: 10px;
+        padding-top: 3rem;
         overflow: visible !important;
     }
     
