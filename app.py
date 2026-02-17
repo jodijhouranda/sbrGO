@@ -41,9 +41,31 @@ st.markdown("""
         background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
+        font-size: 4rem;
+        font-weight: 800;
+        margin-bottom: 0px;
+        letter-spacing: -1.5px;
+        line-height: 1.1;
+        text-shadow: 0 10px 30px rgba(99, 102, 241, 0.1);
+    }
+    
+    .logo-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        margin-top: -20px;
+        margin-bottom: 30px;
+    }
+    
+    .logo-badge {
+        background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        color: white;
+        padding: 5px 15px;
+        border-radius: 50px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
     
     .subtitle {
@@ -93,8 +115,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # App Header
-st.markdown('<p class="main-title">sbrGO Scraper</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
+st.markdown('<div class="logo-container"><p class="main-title">sbrGO</p><span class="logo-badge">Premium Scraper</span></div>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle" style="margin-top:-20px;">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
 
 st.sidebar.header("Configuration")
 
