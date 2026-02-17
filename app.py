@@ -150,54 +150,6 @@ if 'use_location_toggle' not in st.session_state: st.session_state.use_location_
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
 if 'show_loc_dialog' not in st.session_state: st.session_state.show_loc_dialog = False
 
-@st.dialog("📍 Konfigurasi Lokasi")
-def show_location_dialog(search_term):
-    st.markdown(f"Sedang mengoptimalkan pencarian untuk: **{search_term}**")
-    
-    tab1, tab2 = st.tabs(["📡 Deteksi Otomatis", "⌨️ Input Manual"])
-    
-    with tab1:
-        if st.button("🛰️ Ambil Lokasi GPS (Lock GPS)", use_container_width=True, type="primary"):
-            st.info("📡 Sedang meminta akses GPS dari browser...")
-            st.components.v1.html(
-                """
-                <script>
-                    navigator.geolocation.getCurrentPosition(function(pos) {
-                        const lat = pos.coords.latitude.toFixed(6);
-                        const lng = pos.coords.longitude.toFixed(6);
-                        const params = new URLSearchParams(window.parent.location.search);
-                        params.set('lat', lat);
-                        params.set('lng', lng);
-                        window.parent.location.search = params.toString();
-                    }, function(err) {
-                        window.parent.alert("Gagal GPS: " + err.message);
-                    }, {enableHighAccuracy: true, timeout: 8000});
-                </script>
-                """, height=0
-            )
-        
-        if st.session_state.user_lat:
-            st.success(f"GPS Terkunci: `{st.session_state.user_lat}, {st.session_state.user_lng}`")
-            if st.button("🔗 Terjemahkan ke Alamat", use_container_width=True):
-                with st.spinner("Mencari nama wilayah..."):
-                    loc = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-                    st.session_state.resolved_address = loc
-                    st.rerun()
-    
-    with tab2:
-        manual_addr = st.text_input("Masukkan Wilayah/Kota Manual", placeholder="e.g. Sleman, Yogyakarta")
-        if st.button("Simpan Lokasi Manual", use_container_width=True):
-            if manual_addr:
-                st.session_state.resolved_address = manual_addr
-                st.rerun()
-    
-    st.divider()
-    if st.session_state.resolved_address:
-        st.info(f"📍 Lokasi Saat Ini: **{st.session_state.resolved_address}**")
-        if st.button("✅ Selesai & Tutup", use_container_width=True):
-            st.session_state.show_loc_dialog = False
-            st.rerun()
-
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
 if "lat" in query_params and "lng" in query_params:
@@ -205,16 +157,28 @@ if "lat" in query_params and "lng" in query_params:
     st.session_state.user_lng = str(query_params["lng"])
     # If coordinates are in URL, auto-enable the toggle
     st.session_state.use_location_toggle = True
+    # Auto-resolve if we have coordinates but no address yet
+    if not st.session_state.resolved_address:
+        with st.spinner("📍 Mengunci lokasi..."):
+            st.session_state.resolved_address = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
 
 # Unified Main UI layout
 main_container = st.container(border=True)
 with main_container:
-    # 1. Search & Limit
+    # 1. Search Details (Business Name & Location)
     row1_col1, row1_col2 = st.columns([3, 1])
     with row1_col1:
-        search_term = st.text_input("Search Query", placeholder="e.g., PT or Coffee shop")
+        search_term = st.text_input("🔍 Nama Bisnis / Kategori", placeholder="e.g., Coffee Shop, Bengkel, PT...")
     with row1_col2:
-        total_results = st.number_input("Limit", min_value=1, max_value=20, value=5)
+        total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
+    
+    row2_col1, row2_col2 = st.columns([3, 1])
+    with row2_col1:
+        location_input = st.text_input("📍 Lokasi / Wilayah", 
+                                      value=st.session_state.resolved_address if st.session_state.resolved_address else "",
+                                      placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
+    with row2_col2:
+        use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle, key="loc_toggle")
     
     st.markdown("---")
     
@@ -233,50 +197,61 @@ with main_container:
         
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
     
-    # --- 3. INITIALIZE SEARCH QUERY & STATUS ---
-    modified_query = search_term
-    is_detecting = False
-    
-    with conf_col2:
-        # Toggle triggers clearing if turned off
-        use_location = st.toggle("📍 Gunakan Lokasi Saya (Near Me)", value=st.session_state.use_location_toggle, key="loc_toggle")
-        
-        if use_location != st.session_state.use_location_toggle:
-            st.session_state.use_location_toggle = use_location
-            if not use_location:
-                # Clear all location states when toggled off
-                st.session_state.user_lat = None
-                st.session_state.user_lng = None
-                st.session_state.resolved_address = None
-                st.query_params.clear() # Clear URL
-                st.rerun()
-        
+    # --- 3. HANDLE LOCATION LOGIC & PREVIEW ---
+    if use_location != st.session_state.use_location_toggle:
+        st.session_state.use_location_toggle = use_location
         if use_location:
-            # Trigger dialog if we don't have a resolved name yet
-            if not st.session_state.resolved_address:
-                show_location_dialog(search_term)
-            
-            # If address resolved, show the targeting card
-            if st.session_state.resolved_address:
-                modified_query = f"{search_term} di sekitar {st.session_state.resolved_address}"
-                st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
-                                border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-top: 10px; 
-                                box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
-                        <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
-                        <p style="color:#1e293b; font-size:1.05rem; font-weight:600; margin:0;">"{modified_query}"</p>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Small status footer
-                if st.session_state.user_lat:
-                    st.markdown(f'<div style="font-size:0.65rem; color:#94a3b8; text-align:right; margin-top:5px;">GPS Sync: {st.session_state.user_lat}, {st.session_state.user_lng}</div>', unsafe_allow_html=True)
-            else:
-                is_detecting = True # Disable button if we are supposed to have location but don't yet
+            # Trigger GPS Detection Component
+            st.components.v1.html(
+                """
+                <script>
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        const lat = pos.coords.latitude.toFixed(6);
+                        const lng = pos.coords.longitude.toFixed(6);
+                        const params = new URLSearchParams(window.parent.location.search);
+                        params.set('lat', lat);
+                        params.set('lng', lng);
+                        window.parent.location.search = params.toString();
+                    }, function(err) {
+                        window.parent.alert("Gagal GPS: " + err.message);
+                    }, {enableHighAccuracy: true, timeout: 8000});
+                </script>
+                """, height=0
+            )
+        else:
+            # Clear all location states when toggled off
+            st.session_state.user_lat = None
+            st.session_state.user_lng = None
+            st.session_state.resolved_address = None
+            st.query_params.clear()
+            st.rerun()
+
+    # Construct final query
+    target_loc = location_input if location_input else st.session_state.resolved_address
+    if not target_loc: target_loc = ""
+    
+    if search_term and target_loc:
+        modified_query = f"{search_term} di sekitar {target_loc}"
+    elif search_term:
+        modified_query = search_term
+    else:
+        modified_query = ""
 
     st.markdown("---")
-    # Disable button if detecting
-    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Tunggu Lokasi..."
+    
+    # 3. EXTRACTION TRIGGER & PREVIEW
+    if modified_query:
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05)); 
+                        border-left: 5px solid #6366f1; padding: 15px; border-radius: 12px; margin-bottom: 15px; 
+                        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.1);">
+                <p style="color:#4338ca; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 4px 0;">🎯 Targeting Keyword:</p>
+                <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    is_detecting = use_location and not st.session_state.resolved_address
+    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Tunggu lokasi..."
     start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting)
 
 if start_idx:
