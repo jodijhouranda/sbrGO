@@ -182,22 +182,18 @@ with main_container:
     with row1_col2:
         total_results = st.number_input("Limit", min_value=1, max_value=50, value=5)
     
-    row2_col1, row2_col2 = st.columns([3, 1])
+    row2_col1 = st.columns(1)[0]
     with row2_col1:
         location_input = st.text_input("📍 Lokasi / Wilayah", 
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
                                       placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
         
-        # Feedback & Progress for Location
+        # Feedback & Progress for Location (Visible inside the input flow)
         if st.session_state.use_location_toggle and not st.session_state.resolved_address:
-            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Menunggu respon GPS browser...</p>', unsafe_allow_html=True)
-            st.progress(35, text="🛰️ Klik tombol di bawah untuk ambil lokasi")
+            st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Sedang mencari sinyal GPS & Alamat...</p>', unsafe_allow_html=True)
+            st.progress(35, text="🛰️ Menghubungkan ke satelit GPS...")
         elif st.session_state.use_location_toggle and st.session_state.resolved_address:
              st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
-
-    with row2_col2:
-        st.write("") # Spacer
-        use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle, key="loc_toggle", help="Deteksi otomatis lokasi kamu")
     
     st.markdown("---")
     
@@ -215,6 +211,7 @@ with main_container:
             api_key = api_key_input.strip() if api_key_input else None
         
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
+        use_location = st.toggle("📍 Near Me (Auto-Detect)", value=st.session_state.use_location_toggle, key="loc_toggle")
     
     # --- 3. HANDLE LOCATION LOGIC & PREVIEW ---
     if use_location != st.session_state.use_location_toggle:
@@ -227,45 +224,30 @@ with main_container:
             st.rerun()
 
     if use_location and not st.session_state.user_lat:
-        # User-Triggered GPS Detection component
+        # Automatic GPS Detection Script (Restored)
         st.components.v1.html(
             """
-            <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
-                <button onclick="getLoc()" style="
-                    background: #6366f1;
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2);
-                    font-family: sans-serif;
-                    font-size: 0.9rem;
-                    width: 100%;
-                ">📍 Ambil Lokasi GPS (Sentuh/Klik Di Sini)</button>
-            </div>
             <script>
                 function getLoc() {
-                    const btn = document.querySelector('button');
-                    btn.innerText = "⌛ Menghubungkan...";
-                    btn.disabled = true;
-                    
                     navigator.geolocation.getCurrentPosition(function(pos) {
                         const lat = pos.coords.latitude.toFixed(6);
                         const lng = pos.coords.longitude.toFixed(6);
                         const params = new URLSearchParams(window.parent.location.search);
-                        params.set('lat', lat);
-                        params.set('lng', lng);
-                        window.parent.location.search = params.toString();
+                        // Prevent infinite reloads if already set
+                        if (params.get('lat') != lat || params.get('lng') != lng) {
+                            params.set('lat', lat);
+                            params.set('lng', lng);
+                            window.parent.location.search = params.toString();
+                        }
                     }, function(err) {
-                        btn.innerText = "📍 Gagal: " + err.message + " (Klik Lagi)";
-                        btn.disabled = false;
-                        alert("Izin GPS: " + err.message + ". Pastikan GPS aktif.");
-                    }, {enableHighAccuracy: true, timeout: 8000, maximumAge: 0});
+                        console.log("GPS Seek: " + err.message);
+                    }, {enableHighAccuracy: true, timeout: 5000, maximumAge: 0});
                 }
+                // Call immediately and repeat
+                getLoc();
+                setInterval(getLoc, 4000);
             </script>
-            """, height=60
+            """, height=0
         )
 
     # Construct final query
