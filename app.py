@@ -7,6 +7,7 @@ import os
 import asyncio
 import sys
 import time
+from streamlit_js_eval import streamlit_js_eval
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -153,51 +154,20 @@ if 'loc_step' not in st.session_state: st.session_state.loc_step = 0 # 0: None, 
 
 @st.dialog("🛰️ Deteksi Lokasi Otomatis")
 def location_progress_dialog():
-    if not st.session_state.user_lat:
-        st.write("### Tahap 1/2: Mengunci Titik GPS")
-        st.info("💡 Browser mewajibkan klik tombol di bawah untuk mengizinkan akses GPS.")
+    st.write("### Tahap 1/2: Mengaktifkan Geolocation")
+    st.info("💡 Mohon izinkan akses lokasi jika browser memintanya.")
+    st.progress(40, text="Sedang mengambil data dari satelit...")
+    
+    # Use streamlit-js-eval for robust detection
+    loc = streamlit_js_eval(data_string='get_geolocation', key='get_geo')
+    
+    if loc and 'coords' in loc:
+        lat = loc['coords']['latitude']
+        lng = loc['coords']['longitude']
         
-        # HTML Component with User-Gesture Trigger
-        st.components.v1.html(
-            """
-            <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; font-family: sans-serif;">
-                <button id="gpsBtn" onclick="getLoc()" style="
-                    background: #6366f1; color: white; border: none; padding: 12px 20px; 
-                    border-radius: 8px; font-weight: 700; cursor: pointer; width: 100%;
-                    box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2); transition: all 0.2s;
-                ">📍 IZINKAN & AMBIL GPS</button>
-                <div id="status" style="font-size: 0.85rem; color: #64748b; font-weight: 600;">Status: Menunggu Klik...</div>
-            </div>
-            <script>
-                function getLoc() {
-                    const btn = document.getElementById('gpsBtn');
-                    const status = document.getElementById('status');
-                    
-                    btn.disabled = true;
-                    btn.style.background = '#94a3b8';
-                    btn.innerText = "⏳ Sedang Menghubungkan...";
-                    status.innerText = "Status: Meminta izin lokasi...";
-                    
-                    navigator.geolocation.getCurrentPosition(function(pos) {
-                        status.innerText = "Status: Lokasi terkunci! Sinkronisasi...";
-                        const lat = pos.coords.latitude.toFixed(6);
-                        const lng = pos.coords.longitude.toFixed(6);
-                        const params = new URLSearchParams(window.parent.location.search);
-                        params.set('lat', lat);
-                        params.set('lng', lng);
-                        window.parent.location.search = params.toString();
-                    }, function(err) {
-                        btn.disabled = false;
-                        btn.style.background = '#f43f5e';
-                        btn.innerText = "❌ Gagal: " + err.message;
-                        status.innerText = "Error: " + err.message + " (Klik lagi untuk coba)";
-                    }, {enableHighAccuracy: true, timeout: 10000, maximumAge: 0});
-                }
-            </script>
-            """, height=100
-        )
-        st.progress(25, text="Menunggu interaksi pengguna...")
-    else:
+        st.session_state.user_lat = str(round(lat, 6))
+        st.session_state.user_lng = str(round(lng, 6))
+        
         st.write("### Tahap 2/2: Menerjemahkan Alamat")
         st.markdown(f"**Koordinat didapat:** `{st.session_state.user_lat}, {st.session_state.user_lng}`")
         st.progress(85, text="Sedang menerjemahkan titik ke nama jalan/wilayah...")
@@ -211,12 +181,17 @@ def location_progress_dialog():
                 time.sleep(1.2)
                 st.rerun() 
             else:
-                st.error("Gagal mendapatkan nama wilayah. Coba lagi atau masukkan manual di dashboard.")
+                st.error("Gagal mendapatkan nama wilayah. Silakan input manual.")
                 if st.button("❌ Batalkan & Input Manual"):
                     st.session_state.user_lat = None
                     st.session_state.user_lng = None
                     st.session_state.use_location_toggle = False
                     st.rerun()
+    elif loc == False: # User denied permission
+        st.error("Izin GPS ditolak oleh browser.")
+        if st.button("Tutup"):
+            st.session_state.use_location_toggle = False
+            st.rerun()
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
