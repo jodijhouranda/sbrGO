@@ -147,88 +147,19 @@ def get_location_description(lat, lng):
 
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
+# Geolocation & UI state
+if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
 if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
-if 'loc_retry' not in st.session_state: st.session_state.loc_retry = 0
-
-@st.dialog("🛰️ Deteksi Lokasi Otomatis")
-def location_progress_dialog():
-    st.write("### Tahap 1/2: Menghubungi Satelit GPS")
-    st.info("💡 Pastikan GPS HP aktif dan izinkan akses jika browser meminta.")
-    
-    # Granular Feedback Stages
-    st.progress(30, text="📡 Mencari sinyal geolocation...")
-    
-    # Use streamlit-js-eval with a dynamic key to allow retries
-    geo_key = f"get_geo_{st.session_state.loc_retry}"
-    loc = streamlit_js_eval(data_string='get_geolocation', key=geo_key)
-    
-    if loc and 'coords' in loc:
-        st.success("✅ Koordinat Terkunci!")
-        lat = loc['coords']['latitude']
-        lng = loc['coords']['longitude']
-        st.session_state.user_lat = str(round(lat, 6))
-        st.session_state.user_lng = str(round(lng, 6))
-        
-        st.write("### Tahap 2/2: Menerjemahkan Alamat")
-        st.progress(85, text="🗺️ Menerjemahkan titik ke nama wilayah...")
-        
-        with st.spinner("📦 Menghubungi server geocoding..."):
-            addr = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-            if addr:
-                st.session_state.resolved_address = addr
-                st.success(f"📍 Alamat: **{addr}**")
-                time.sleep(1)
-                st.rerun() 
-            else:
-                st.error("Alamat tidak ditemukan. Coba lagi atau input manual.")
-                if st.button("❌ Batalkan & Input Manual"):
-                    st.session_state.user_lat = None
-                    st.session_state.user_lng = None
-                    st.session_state.use_location_toggle = False
-                    st.rerun()
-    elif loc == False: 
-        st.error("❌ Izin GPS ditolak atau terjadi error pada browser.")
-        if st.button("🔄 Coba Lagi"): 
-            st.session_state.loc_retry += 1
-            st.rerun()
-    else:
-        # Show stuck help after a bit
-        st.warning("⚠️ Masih menunggu respon dari browser...")
-        st.markdown("""
-        **Cara mengatasi GPS macet:**
-        1. Segarkan halaman (F5)
-        2. Pastikan 'Location Services' di HP/PC aktif
-        3. Cek notifikasi di baris alamat browser (ikon gembok)
-        """)
-        if st.button("🛰️ Paksa Deteksi Ulang"):
-            st.session_state.loc_retry += 1
-            st.rerun()
-        if st.button("⌨️ Input Manual Saja"):
-            st.session_state.use_location_toggle = False
-            st.rerun()
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
 query_params = st.query_params
 if "lat" in query_params and "lng" in query_params:
     st.session_state.user_lat = str(query_params["lat"])
     st.session_state.user_lng = str(query_params["lng"])
-    # If coordinates are in URL, auto-enable the toggle
     st.session_state.use_location_toggle = True
-    # Auto-resolve if we have coordinates but no address yet
-    if not st.session_state.resolved_address:
-        loc_msg = st.empty()
-        loc_bar = st.progress(50, text="🔍 Menerjemahkan Alamat...")
-        
-        # Resolve address
-        st.session_state.resolved_address = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-        
-        loc_bar.progress(100, text="✅ Alamat Berhasil Ditemukan")
-        time.sleep(0.8)
-        loc_msg.empty()
-        loc_bar.empty()
-        st.rerun()
+    st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
 
 # Unified Main UI layout
 main_container = st.container(border=True)
@@ -246,8 +177,11 @@ with main_container:
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
                                       placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
         
-        if st.session_state.use_location_toggle and st.session_state.resolved_address:
-             st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
+        if st.session_state.use_location_toggle:
+            if st.session_state.resolved_address:
+                 st.markdown(f'<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Terkunci: {st.session_state.resolved_address}</p>', unsafe_allow_html=True)
+            else:
+                 st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">🛰️ Sedang mengunci koordinat...</p>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -277,9 +211,14 @@ with main_container:
             st.query_params.clear()
             st.rerun()
 
-    # Trigger Pop-up Progress Dialog
     if use_location and not st.session_state.resolved_address:
-        location_progress_dialog()
+        # Direct raw coordinate capture
+        loc = streamlit_js_eval(data_string='get_geolocation', key='get_geo_simple')
+        if loc and 'coords' in loc:
+            st.session_state.user_lat = str(round(loc['coords']['latitude'], 6))
+            st.session_state.user_lng = str(round(loc['coords']['longitude'], 6))
+            st.session_state.resolved_address = f"{st.session_state.user_lat}, {st.session_state.user_lng}"
+            st.rerun()
 
     # Construct final query
     target_loc = location_input if location_input else st.session_state.resolved_address
