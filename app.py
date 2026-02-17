@@ -41,8 +41,8 @@ st.markdown("""
         font-size: 10rem;
         font-weight: 900;
         margin-bottom: 0px;
-        letter-spacing: -6px;
-        line-height: 0.85;
+        letter-spacing: -1px;
+        line-height: 0.95;
         text-shadow: 0 20px 60px rgba(99, 102, 241, 0.2);
     }
     
