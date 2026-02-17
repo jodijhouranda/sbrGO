@@ -6,6 +6,7 @@ import requests
 import os
 import asyncio
 import sys
+import time
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -159,8 +160,18 @@ if "lat" in query_params and "lng" in query_params:
     st.session_state.use_location_toggle = True
     # Auto-resolve if we have coordinates but no address yet
     if not st.session_state.resolved_address:
-        with st.spinner("📍 Mengunci lokasi..."):
-            st.session_state.resolved_address = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+        loc_msg = st.empty()
+        loc_bar = st.progress(50)
+        with loc_msg:
+            st.markdown('<p style="color:#6366f1; font-size:0.8rem; font-weight:600;">🔍 Menerjemahkan Alamat...</p>', unsafe_allow_html=True)
+        
+        st.session_state.resolved_address = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+        
+        loc_bar.progress(100)
+        time.sleep(0.5)
+        loc_msg.empty()
+        loc_bar.empty()
+        st.rerun()
 
 # Unified Main UI layout
 main_container = st.container(border=True)
@@ -178,11 +189,14 @@ with main_container:
                                       value=st.session_state.resolved_address if st.session_state.resolved_address else "",
                                       placeholder="e.g., Sleman, Jakarta Selatan, atau aktifkan 'Near Me'")
         
-        # Feedback & Fallback for Location
+        # Feedback & Progress for Location
         if st.session_state.use_location_toggle and not st.session_state.resolved_address:
             st.markdown('<p style="color:#6366f1; font-size:0.8rem; margin-top:-10px; font-weight:600;">📡 Sedang mencari sinyal GPS & Alamat...</p>', unsafe_allow_html=True)
+            loc_prog = st.progress(30, text="Mengunci titik GPS...")
             if st.button("🔄 Klik di sini jika GPS macet", help="Paksa browser minta izin GPS ulang"):
                 st.rerun()
+        elif st.session_state.use_location_toggle and st.session_state.resolved_address:
+             st.markdown('<p style="color:#10b981; font-size:0.8rem; margin-top:-10px; font-weight:600;">✅ Lokasi Teridentifikasi</p>', unsafe_allow_html=True)
 
     with row2_col2:
         st.write("") # Spacer
