@@ -148,6 +148,7 @@ def get_location_description(lat, lng):
 # Geolocation & UI state
 if 'user_lat' not in st.session_state: st.session_state.user_lat = None
 if 'user_lng' not in st.session_state: st.session_state.user_lng = None
+if 'use_location_toggle' not in st.session_state: st.session_state.use_location_toggle = False
 if 'resolved_address' not in st.session_state: st.session_state.resolved_address = None
 
 # --- 1. PULL GEOLOCATION FROM URL FIRST ---
