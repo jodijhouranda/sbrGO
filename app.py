@@ -181,8 +181,9 @@ with main_container:
         
         show_map = st.toggle("🗺️ Tampilkan Peta Visual", value=True)
     
-    # --- 3. INITIALIZE SEARCH QUERY ---
+    # --- 3. INITIALIZE SEARCH QUERY & STATUS ---
     modified_query = search_term
+    is_detecting = False
     
     with conf_col2:
         # Toggle with key and session state for persistence
@@ -190,21 +191,30 @@ with main_container:
         st.session_state.use_location_toggle = use_location
         
         if use_location:
-            # --- 3. CALCULATE & DISPLAY MODIFIED QUERY ---
             if st.session_state.user_lat and st.session_state.user_lng:
                 # Resolve address if coordinates available
-                with st.spinner("🔍 Sedang mengolah alamat..."):
-                    loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
-                    if loc_description:
-                        modified_query = f"{search_term} di sekitar {loc_description}"
-                        st.markdown(f"""
-                            <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)); border-left: 5px solid #6366f1; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);">
-                                <p style="color:#4338ca; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 5px 0;">🎯 Targeting Keyword:</p>
-                                <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
+                is_detecting = True
+                det_progress = st.progress(0, text="🔍 Menghubungkan ke satelit...")
+                
+                # Step 1: GPS Lock
+                det_progress.progress(30, text="📡 GPS Terkunci. Mengambil alamat...")
+                
+                loc_description = get_location_description(st.session_state.user_lat, st.session_state.user_lng)
+                
+                if loc_description:
+                    det_progress.progress(100, text="✅ Alamat Berhasil Ditemukan")
+                    modified_query = f"{search_term} di sekitar {loc_description}"
+                    st.markdown(f"""
+                        <div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)); border-left: 5px solid #6366f1; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);">
+                            <p style="color:#4338ca; font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin:0 0 5px 0;">🎯 Targeting Keyword:</p>
+                            <p style="color:#1e293b; font-size:1.1rem; font-weight:600; margin:0;">"{modified_query}"</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    is_detecting = False
+                else:
+                    det_progress.empty()
+                    st.info(f"📍 Lokasi Terdeteksi: {st.session_state.user_lat}, {st.session_state.user_lng}")
+                    is_detecting = False
                 
                 # Device status footer
                 st.components.v1.html(
@@ -212,6 +222,7 @@ with main_container:
                     height=20
                 )
             else:
+                is_detecting = True
                 # Trigger JS detection
                 st.components.v1.html(
                     """
@@ -234,7 +245,9 @@ with main_container:
                 )
 
     st.markdown("---")
-    start_idx = st.button("🚀 Start Extraction", use_container_width=True)
+    # Disable button if detecting
+    btn_label = "🚀 Start Extraction" if not is_detecting else "⏳ Tunggu Lokasi..."
+    start_idx = st.button(btn_label, use_container_width=True, disabled=is_detecting)
 
 if start_idx:
     if not search_term:
