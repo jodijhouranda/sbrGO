@@ -19,3 +19,6 @@ libxi6
 libxrender1
 libxtst6
 libglib2.0-0
+libxrandr2
+libcairo2
+libpango-1.0-0
