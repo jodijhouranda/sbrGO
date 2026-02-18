@@ -230,6 +230,11 @@ def save_to_tidb(df):
             df_to_save['username'] = st.session_state.get('username', 'system')
             
             df_to_save.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
+            
+            # Trigger refresh for Database Explorer
+            st.cache_data.clear()
+            st.session_state.refresh_needed = True
+            
             status.update(label="✅ Data successfully saved to TiDB!", state="complete")
         st.success(f"Successfully saved {len(df)} records under user '{st.session_state.username}'.")
     except Exception as e:
