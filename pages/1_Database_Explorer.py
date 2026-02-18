@@ -74,11 +74,10 @@ def fetch_db_data(username, is_superuser):
         return None
 
 def delete_records(values, column_name="id"):
-    """Menghapus data berdasarkan kolom tertentu (id atau URL)"""
     try:
         with conn.session as session:
             for val in values:
-                # Query dinamis tergantung kolom kunci (id atau URL)
+                # Query dinamis berdasarkan kolom target (id atau URL)
                 query_str = f"DELETE FROM scraped_results WHERE `{column_name}` = :val"
                 params = {"val": val}
                 
@@ -97,30 +96,24 @@ def delete_records(values, column_name="id"):
 def deduplicate_db(df):
     if df is None or df.empty: return True
     try:
-        # Hapus duplikat di memori
         df_unique = df.sort_values('scraped_at', ascending=False).drop_duplicates(
             subset=['Name', 'Latitude', 'Longitude'], keep='first'
         )
-        
         with conn.session as session:
-            # Hapus semua data lama user ini
             if st.session_state.get('is_superuser', False):
                 session.execute(text("DELETE FROM scraped_results"))
             else:
                 session.execute(text("DELETE FROM scraped_results WHERE username = :user"), 
                                 {"user": st.session_state.get('username')})
             session.commit()
-            
-        # Insert ulang data bersih
         df_unique.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Error deduplication: {e}")
+        st.error(f"Error: {e}")
         return False
 
 def format_wa_link(phone):
-    """Fallback generator WA link jika kolom 'WhatsApp Link' kosong"""
     if pd.isna(phone): return None
     clean_phone = "".join(filter(str.isdigit, str(phone)))
     if not clean_phone: return None
@@ -132,22 +125,21 @@ def format_wa_link(phone):
 # --- DIALOGS ---
 @st.dialog("Konfirmasi Penghapusan")
 def confirm_delete_dialog(selected_values, target_col):
-    st.warning(f"⚠️ Hapus {len(selected_values)} data?")
-    st.write(f"Data akan dihapus berdasarkan **{target_col}**.")
+    st.warning(f"⚠️ Anda akan menghapus **{len(selected_values)}** data.")
+    st.caption(f"Penghapusan berdasarkan kolom: {target_col}")
     
     col_yes, col_no = st.columns(2)
     with col_yes:
         if st.button("Ya, Hapus", type="primary", use_container_width=True):
             progress_bar = st.progress(0, text="Memproses...")
             for i in range(100):
-                time.sleep(0.005)
-                progress_bar.progress(i + 1, text="Menghapus data dari database...")
+                time.sleep(0.005) 
+                progress_bar.progress(i + 1, text="Menghapus data...")
             
-            # Panggil fungsi delete dengan kolom target yang dinamis
             if delete_records(selected_values, column_name=target_col):
-                progress_bar.empty()
+                progress_bar.progress(100, text="Selesai!")
                 st.session_state.refresh_needed = True
-                st.success("✅ Berhasil dihapus!")
+                st.success("Berhasil dihapus!")
                 time.sleep(0.5)
                 st.rerun()
             else:
@@ -167,10 +159,10 @@ if 'df_db_v5' not in st.session_state or st.session_state.refresh_needed:
     raw_data = fetch_db_data(st.session_state.username, st.session_state.is_superuser)
     if raw_data is not None and not raw_data.empty:
         df_init = raw_data.copy()
-        if "Select" in df_init.columns:
-            df_init["Select"] = False
-        else:
+        if "Select" not in df_init.columns:
             df_init.insert(0, "Select", False)
+        else:
+            df_init["Select"] = False
         st.session_state.df_db_v5 = df_init
     else:
         st.session_state.df_db_v5 = pd.DataFrame()
@@ -197,14 +189,13 @@ if not df_db.empty:
 
     st.write("") 
 
-    # 3. Table Editor (Cerdas mendeteksi kolom ID)
+    # 3. Table Editor (FIXED: No Hidden Param)
     
-    # Deteksi kolom unik untuk penghapusan
-    # Prioritas: id -> URL -> Name
+    # Deteksi kolom unik
     target_delete_col = "id"
     if "id" not in df_db.columns:
         if "URL" in df_db.columns:
-            target_delete_col = "URL" # Fallback ke URL jika id tidak ada
+            target_delete_col = "URL"
         elif "Name" in df_db.columns:
             target_delete_col = "Name"
 
@@ -214,25 +205,31 @@ if not df_db.empty:
         "URL": st.column_config.LinkColumn("Maps"),
         "Phone": st.column_config.TextColumn("Telepon"),
         "Rating": st.column_config.NumberColumn("⭐", format="%.1f"),
-        # Sembunyikan kolom target delete agar tabel rapi, tapi datanya tetap ada
-        target_delete_col: st.column_config.Column(hidden=True)
     }
     
-    # Atur urutan kolom: Select paling kiri
+    # ATUR VISIBILITAS VIA COLUMN_ORDER
+    # Kita buat list kolom yang akan DITAMPILKAN.
     all_cols = df_db.columns.tolist()
     if "Select" in all_cols:
         all_cols.remove("Select")
-        all_cols.insert(0, "Select")
+        all_cols.insert(0, "Select") # Pindah Select ke depan
+    
+    display_cols = all_cols.copy()
+    
+    # Jika targetnya 'id' (teknis), kita sembunyikan dari tampilan agar rapi.
+    # TAPI jika targetnya 'URL' atau 'Name', kita TETAP TAMPILKAN karena itu informasi berguna.
+    if target_delete_col == "id" and "id" in display_cols:
+        display_cols.remove("id")
     
     edited_df = st.data_editor(
         df_db,
         column_config=config,
-        column_order=all_cols,
+        column_order=display_cols, # Hanya kolom di list ini yang tampil
         disabled=[c for c in df_db.columns if c != "Select"],
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor_fix"
+        key="main_editor_fixed_v2"
     )
 
     st.write("") 
@@ -251,14 +248,14 @@ if not df_db.empty:
         if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
             selected = edited_df[edited_df["Select"] == True]
             if not selected.empty:
-                # Gunakan kolom target yang sudah dideteksi (URL atau id)
+                # Pastikan kolom target ada di dataframe yang diedit
                 if target_delete_col in selected.columns:
                     vals_to_delete = selected[target_delete_col].tolist()
                     confirm_delete_dialog(vals_to_delete, target_delete_col)
                 else:
-                    st.error(f"❌ Error: Kolom kunci '{target_delete_col}' hilang. Refresh halaman.")
+                    st.error(f"❌ Kolom kunci '{target_delete_col}' hilang. Mohon refresh.")
             else:
-                st.warning("⚠️ Pilih data terlebih dahulu (centang kotak).")
+                st.warning("⚠️ Pilih data terlebih dahulu.")
 
     # TOMBOL DEDUPLICATE
     with c_act2:
@@ -282,7 +279,7 @@ if not df_db.empty:
 
     st.markdown("---")
 
-    # 5. Map Section (FIXED CONTENT)
+    # 5. Map Section
     st.markdown("### 🗺️ Peta Sebaran")
     map_df = df_db.copy()
     map_df['lat'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
@@ -298,23 +295,17 @@ if not df_db.empty:
         marker_cluster = MarkerCluster().add_to(m)
 
         for _, row in map_df.iterrows():
-            # Logic Cerdas untuk Popup
-            # 1. Ambil Nama
             name = row.get('Name', 'Tanpa Nama')
-            
-            # 2. Ambil Alamat (Cek kolom Address atau Alamat)
             alamat = row.get('Address', row.get('Alamat', '-'))
             if pd.isna(alamat): alamat = "-"
             
-            # 3. Ambil Link WA (Prioritaskan kolom 'WhatsApp Link' dari DB)
             wa_link = row.get('WhatsApp Link')
-            if pd.isna(wa_link): # Jika kosong, generate dari Phone
+            if pd.isna(wa_link): 
                 wa_link = format_wa_link(row.get('Phone', ''))
                 
-            # 4. Ambil Link Maps
             gmap_link = row.get('URL', '')
 
-            # Buat HTML Tombol
+            # Tombol HTML
             wa_btn = ""
             if wa_link:
                 wa_btn = f'<a href="{wa_link}" target="_blank" style="display:inline-block; margin-top:5px; text-decoration:none; color:white; background:#25D366; padding:4px 8px; border-radius:4px; font-size:0.8em;">💬 WhatsApp</a>'
