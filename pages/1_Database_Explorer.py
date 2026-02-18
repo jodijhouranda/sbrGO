@@ -7,21 +7,9 @@ import os
 from streamlit_folium import st_folium
 import folium
 
-# --- CUSTOM CSS (Mengembalikan Desain Tombol yang Bagus) ---
+# --- CUSTOM CSS (Desain Tombol & Layout) ---
 st.markdown("""
 <style>
-    /* Styling Container Utama agar lebih rapi */
-    .block-container {
-        padding-top: 2rem;
-    }
-    
-    /* Styling Judul */
-    .subtitle {
-        font-size: 1.2rem;
-        color: #64748b;
-        margin-bottom: 20px;
-    }
-
     /* Styling Metric Cards */
     div[data-testid="stMetric"] {
         background-color: #f8fafc;
@@ -36,14 +24,14 @@ st.markdown("""
         width: 100%;
         border-radius: 8px;
         font-weight: 600;
-        padding: 0.5rem 1rem;
+        height: auto;
+        padding: 0.6rem 1rem;
         transition: all 0.3s ease;
         border: none;
     }
 
-    /* Warna Tombol Delete (Merah) - Kita akan target via key/urutan nanti, 
-       tapi ini default hover effect */
-    div.stButton > button:hover {
+    /* Efek Hover */
+    div.stButton > button:hover, div.stDownloadButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
@@ -57,6 +45,12 @@ st.markdown("""
         color: white;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
+    
+    .subtitle {
+        font-size: 1.2rem;
+        color: #64748b;
+        margin-bottom: 20px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,7 +59,6 @@ st.markdown('<p class="subtitle">Search and manage your collected business data.
 # --- DATABASE CONNECTION ---
 cert_path = "isrgrootx1.pem"
 connect_args = {}
-# Cek sertifikat jika ada (untuk local/deploy flexibility)
 if os.path.exists(cert_path):
     connect_args = {"ssl": {"ca": os.path.abspath(cert_path)}}
 
@@ -137,22 +130,22 @@ def format_wa_link(phone):
 # --- DIALOGS ---
 @st.dialog("Konfirmasi Penghapusan")
 def confirm_delete_dialog(selected_ids):
-    st.markdown(f"### ⚠️ Hapus Data?")
-    st.write(f"Anda akan menghapus **{len(selected_ids)}** data terpilih secara permanen.")
+    st.warning(f"⚠️ Hapus {len(selected_ids)} data?")
+    st.write("Data yang dihapus tidak dapat dikembalikan.")
     
     col_yes, col_no = st.columns(2)
     with col_yes:
         if st.button("Ya, Hapus", type="primary", use_container_width=True):
             # Progress Bar UI
-            progress_bar = st.progress(0, text="Menghubungkan ke database...")
+            progress_bar = st.progress(0, text="Memproses...")
             for i in range(100):
-                time.sleep(0.005) # Animasi cepat
-                progress_bar.progress(i + 1, text="Menghapus data...")
+                time.sleep(0.005) 
+                progress_bar.progress(i + 1, text="Menghapus data dari database...")
             
             if delete_records(selected_ids):
-                progress_bar.progress(100, text="Selesai!")
+                progress_bar.empty()
                 st.session_state.refresh_needed = True
-                st.success("Data berhasil dihapus.")
+                st.success("✅ Berhasil dihapus!")
                 time.sleep(0.5)
                 st.rerun()
             else:
@@ -163,7 +156,7 @@ def confirm_delete_dialog(selected_ids):
 
 # --- MAIN APP LOGIC ---
 
-# Setup Session State Default
+# Setup Session State
 if 'username' not in st.session_state: st.session_state.username = 'demo_user' 
 if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
 if 'refresh_needed' not in st.session_state: st.session_state.refresh_needed = False
@@ -173,11 +166,11 @@ if 'df_db_v5' not in st.session_state or st.session_state.refresh_needed:
     raw_data = fetch_db_data(st.session_state.username, st.session_state.is_superuser)
     if raw_data is not None and not raw_data.empty:
         df_init = raw_data.copy()
-        # Ensure Select column exists
-        if "Select" not in df_init.columns:
-            df_init.insert(0, "Select", False)
+        # Reset selection on load
+        if "Select" in df_init.columns:
+            df_init["Select"] = False
         else:
-            df_init["Select"] = False # Reset selection on reload
+            df_init.insert(0, "Select", False)
         st.session_state.df_db_v5 = df_init
     else:
         st.session_state.df_db_v5 = pd.DataFrame()
@@ -188,7 +181,7 @@ df_db = st.session_state.df_db_v5
 # --- UI RENDER ---
 
 if not df_db.empty:
-    # Header Dashboard
+    # 1. Header Dashboard
     st.markdown(f"""
     <div class="dashboard-header">
         <h3 style="margin:0; font-size: 1.5rem;">📊 Data Insights Dashboard</h3>
@@ -196,7 +189,7 @@ if not df_db.empty:
     </div>
     """, unsafe_allow_html=True)
     
-    # Metrics
+    # 2. Metrics
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Data", f"{len(df_db):,}")
     m2.metric("Kota/Kab", df_db['Kabupaten'].nunique() if 'Kabupaten' in df_db.columns else 0)
@@ -204,12 +197,11 @@ if not df_db.empty:
     kbli_count = df_db['KBLI'].astype(str).str[:2].nunique() if 'KBLI' in df_db.columns else 0
     m4.metric("Kategori (KBLI)", kbli_count)
 
-    st.write("") # Spacer
+    st.write("") 
 
-    # --- TABLE EDITOR ---
-    # Catatan: Kita menaruh ini DI LUAR form agar download button bisa sejajar.
-    # Namun data_editor cukup efisien. 
+    # 3. Table Editor (Show ALL Columns)
     
+    # Config format kolom (untuk kolom yang umum saja)
     config = {
         "Select": st.column_config.CheckboxColumn("✅", width="small", default=False),
         "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape", format="D MMM, HH:mm"),
@@ -218,29 +210,28 @@ if not df_db.empty:
         "Rating": st.column_config.NumberColumn("⭐", format="%.1f"),
     }
     
-    # Hide technical columns if needed
-    cols_to_show = ["Select", "Name", "Phone", "Rating", "Alamat", "Kabupaten", "KBLI", "URL", "scraped_at"]
-    # Filter columns that actually exist
-    cols_to_show = [c for c in cols_to_show if c in df_db.columns]
+    # Logic untuk menampilkan SEMUA kolom dengan 'Select' di paling kiri
+    all_cols = df_db.columns.tolist()
+    if "Select" in all_cols:
+        all_cols.remove("Select")
+        all_cols.insert(0, "Select")
     
-    # Tampilkan tabel
     edited_df = st.data_editor(
         df_db,
         column_config=config,
-        column_order=cols_to_show,
+        column_order=all_cols, # Tampilkan semua
         disabled=[c for c in df_db.columns if c != "Select"],
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor"
+        key="main_editor_v2"
     )
 
-    st.write("") # Spacer
+    st.write("") 
 
-    # --- ACTION BUTTONS (LAYOUT SERAGAM) ---
-    # 3 Kolom sejajar: Delete | Deduplicate | Export
+    # 4. Action Buttons (3 Kolom Sejajar)
     
-    # Persiapan Data Excel
+    # Siapkan Data Excel
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as wr:
         output_df = edited_df.drop(columns=['Select']) if 'Select' in edited_df.columns else edited_df
@@ -249,27 +240,32 @@ if not df_db.empty:
 
     c_act1, c_act2, c_act3 = st.columns(3)
 
-    # 1. Tombol Delete
+    # TOMBOL DELETE
     with c_act1:
-        # Kita pakai session state trigger manual untuk cek seleksi
         if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
             selected = edited_df[edited_df["Select"] == True]
             if not selected.empty:
-                confirm_delete_dialog(selected["id"].tolist())
+                # PERBAIKAN UTAMA: Cari kolom ID (case-insensitive)
+                id_col = next((c for c in selected.columns if c.lower() == 'id'), None)
+                
+                if id_col:
+                    confirm_delete_dialog(selected[id_col].tolist())
+                else:
+                    st.error("❌ Error: Kolom 'id' tidak ditemukan di database. Hubungi admin.")
             else:
-                st.warning("Pilih data dulu!")
+                st.warning("⚠️ Pilih data terlebih dahulu (centang kotak).")
 
-    # 2. Tombol Deduplicate
+    # TOMBOL DEDUPLICATE
     with c_act2:
         if st.button("♻️ Remove Duplicates", use_container_width=True):
             with st.spinner("Membersihkan duplikat..."):
                 if deduplicate_db(df_db):
                     st.session_state.refresh_needed = True
-                    st.success("Duplikat dihapus!")
+                    st.success("Selesai!")
                     time.sleep(1)
                     st.rerun()
 
-    # 3. Tombol Export (Penyebab error sebelumnya, sekarang aman di luar form)
+    # TOMBOL EXPORT
     with c_act3:
         st.download_button(
             label="📥 Export Excel",
@@ -281,7 +277,7 @@ if not df_db.empty:
 
     st.markdown("---")
 
-    # --- MAP SECTION ---
+    # 5. Map Section
     st.markdown("### 🗺️ Peta Sebaran")
     map_df = df_db.copy()
     map_df['lat'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
@@ -289,12 +285,10 @@ if not df_db.empty:
     map_df = map_df.dropna(subset=['lat', 'lng'])
 
     if not map_df.empty:
-        # Center map
         avg_lat = map_df['lat'].mean()
         avg_lng = map_df['lng'].mean()
         m = folium.Map(location=[avg_lat, avg_lng], zoom_start=10, tiles='CartoDB positron')
         
-        # Cluster marker agar tidak berat jika data banyak
         from folium.plugins import MarkerCluster
         marker_cluster = MarkerCluster().add_to(m)
 
