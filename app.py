@@ -226,6 +226,9 @@ def save_to_tidb(df):
     try:
         with st.status("Saving data to TiDB...", expanded=False) as status:
             df_to_save = df.copy()
+            if 'Select' in df_to_save.columns:
+                df_to_save = df_to_save.drop(columns=['Select'])
+            
             df_to_save['scraped_at'] = pd.Timestamp.now()
             df_to_save['username'] = st.session_state.get('username', 'system')
             

@@ -99,6 +99,8 @@ def deduplicate_db(df):
         df_unique = df.sort_values('scraped_at', ascending=False).drop_duplicates(
             subset=['Name', 'Latitude', 'Longitude'], keep='first'
         )
+        if 'Select' in df_unique.columns:
+            df_unique = df_unique.drop(columns=['Select'])
         with conn.session as session:
             if st.session_state.get('is_superuser', False):
                 session.execute(text("DELETE FROM scraped_results"))
