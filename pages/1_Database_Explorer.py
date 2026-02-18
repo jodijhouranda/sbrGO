@@ -82,9 +82,34 @@ def format_wa_link(phone):
     return None
 
 # Main UI
-df_db = fetch_db_data(st.session_state.get('username'), st.session_state.get('is_superuser', False))
+if 'df_db_v5' not in st.session_state or st.session_state.get('refresh_needed', False):
+    raw_data = fetch_db_data(st.session_state.get('username'), st.session_state.get('is_superuser', False))
+    if raw_data is not None and not raw_data.empty:
+        df_init = raw_data.copy()
+        df_init.insert(0, "Select", False)
+        st.session_state.df_db_v5 = df_init
+    else:
+        st.session_state.df_db_v5 = pd.DataFrame()
+    st.session_state.refresh_needed = False
 
-if df_db is not None and not df_db.empty:
+df_db = st.session_state.df_db_v5
+
+@st.dialog("Confirm Deletion")
+def confirm_delete_dialog(selected_ids):
+    st.warning(f"Are you sure you want to delete {len(selected_ids)} selected records? This action cannot be undone.")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Yes, Delete", type="primary", use_container_width=True):
+            if delete_records(selected_ids):
+                st.session_state.refresh_needed = True
+                st.success("Deleted successfully!")
+                time.sleep(1)
+                st.rerun()
+    with c2:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+if not df_db.empty:
     st.markdown('<div style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 20px; border-radius: 15px; margin-bottom: 25px; color: white;"><h3 style="margin:0; color: white; font-size: 1.5rem;">📊 Data Insights Dashboard</h3><p style="margin:0; opacity: 0.8; font-size: 0.9rem;">Filtering data for: '+str(st.session_state.username)+'</p></div>', unsafe_allow_html=True)
     
     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
@@ -98,8 +123,6 @@ if df_db is not None and not df_db.empty:
     m_col4.metric("KBLI 2-Digit", kbli_2)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    df_display = df_db.copy()
-    df_display.insert(0, "Select", False)
     
     # Configuration for data editor
     config = {
@@ -111,35 +134,32 @@ if df_db is not None and not df_db.empty:
     }
     
     # Disable all except Select
-    disabled_cols = [c for c in df_display.columns if c != "Select"]
+    disabled_cols = [c for c in df_db.columns if c != "Select"]
     
-    edited_df = st.data_editor(df_display, column_config=config, disabled=disabled_cols, hide_index=True, use_container_width=True, key="db_editor_v4")
-    
+    # Capture changes and update session state immediately
+    edited_df = st.data_editor(
+        df_db, 
+        column_config=config, 
+        disabled=disabled_cols, 
+        hide_index=True, 
+        use_container_width=True, 
+        key="db_editor_v5"
+    )
+    st.session_state.df_db_v5 = edited_df
+
     act_col1, act_col2, act_col3 = st.columns(3)
     with act_col1:
         if st.button("🔄 Remove Duplicates", use_container_width=True):
-            if deduplicate_db(df_db): st.success("Deduplicated!"); time.sleep(1); st.rerun()
+            if deduplicate_db(df_db): 
+                st.session_state.refresh_needed = True
+                st.success("Deduplicated!"); time.sleep(1); st.rerun()
     with act_col2:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as wr: df_db.to_excel(wr, index=False)
         st.download_button("📥 Export Excel", data=buf.getvalue(), file_name="sbrgo_export.xlsx", use_container_width=True)
     
-    @st.dialog("Confirm Deletion")
-    def confirm_delete_dialog(selected_ids):
-        st.warning(f"Are you sure you want to delete {len(selected_ids)} selected records? This action cannot be undone.")
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("Yes, Delete", type="primary", use_container_width=True):
-                if delete_records(selected_ids):
-                    st.success("Deleted successfully!")
-                    time.sleep(1)
-                    st.rerun()
-        with c2:
-            if st.button("Cancel", use_container_width=True):
-                st.rerun()
-
     with act_col3:
-        sel = edited_df[edited_df["Select"] == True]
+        sel = st.session_state.df_db_v5[st.session_state.df_db_v5["Select"] == True]
         delete_btn_label = f"🗑️ Delete ({len(sel)})" if not sel.empty else "🗑️ Delete"
         if st.button(delete_btn_label, type="primary", use_container_width=True, disabled=sel.empty):
             confirm_delete_dialog(sel["id"].tolist() if "id" in sel.columns else [])
