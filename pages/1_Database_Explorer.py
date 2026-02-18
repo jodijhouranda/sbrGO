@@ -136,7 +136,34 @@ if not df_db.empty:
     # Disable all except Select
     disabled_cols = [c for c in df_db.columns if c != "Select"]
     
-    act_col1, act_col2, act_col3 = st.columns(3)
+    # Selection Form: Only the table and delete button are inside to maintain silent selection
+    with st.form("delete_form_v3", border=False):
+        edited_df = st.data_editor(
+            df_db, 
+            column_config=config, 
+            disabled=disabled_cols, 
+            hide_index=True, 
+            use_container_width=True, 
+            key="db_editor_v8"
+        )
+        
+        # Action button inside the form (Primary Action)
+        d1, d2, d3 = st.columns([1, 2, 1])
+        with d2:
+            if st.form_submit_button("🗑️ Delete Selected Records", type="primary", use_container_width=True):
+                # Critical fix: Ensure we are counting correctly from the returned edited_df
+                # In st.form, the return value of st.data_editor contains the state at submission
+                sel = edited_df[edited_df["Select"] == True]
+                if not sel.empty:
+                    confirm_delete_dialog(sel["id"].tolist() if "id" in sel.columns else [])
+                else:
+                    st.warning("No records selected. Please check the 'Select' boxes first.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Secondary actions in a clean, consistent row below the form
+    st.markdown('<p style="font-size:1.1rem; font-weight:600; color:#475569; margin-bottom:15px;">🛠️ Workspace Management</p>', unsafe_allow_html=True)
+    act_col1, act_col2 = st.columns(2)
     with act_col1:
         if st.button("🔄 Remove Duplicates", use_container_width=True):
             if deduplicate_db(df_db): 
@@ -146,27 +173,6 @@ if not df_db.empty:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as wr: df_db.to_excel(wr, index=False)
         st.download_button("📥 Export Excel", data=buf.getvalue(), file_name="sbrgo_export.xlsx", use_container_width=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Selection Form: Only the table and delete button are inside to maintain silent selection
-    with st.form("delete_form", border=False):
-        edited_df = st.data_editor(
-            df_db, 
-            column_config=config, 
-            disabled=disabled_cols, 
-            hide_index=True, 
-            use_container_width=True, 
-            key="db_editor_v7"
-        )
-        
-        # Submit button triggers the confirmation dialog
-        if st.form_submit_button("🗑️ Delete Selected", type="primary", use_container_width=True):
-            sel = edited_df[edited_df["Select"] == True]
-            if not sel.empty:
-                confirm_delete_dialog(sel["id"].tolist() if "id" in sel.columns else [])
-            else:
-                st.warning("Please select items to delete first.")
 
     st.markdown("---")
     st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b;">🗺️ Database Coverage Map</p>', unsafe_allow_html=True)
