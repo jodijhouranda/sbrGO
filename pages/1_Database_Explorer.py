@@ -123,12 +123,26 @@ if df_db is not None and not df_db.empty:
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine='openpyxl') as wr: df_db.to_excel(wr, index=False)
         st.download_button("📥 Export Excel", data=buf.getvalue(), file_name="sbrgo_export.xlsx", use_container_width=True)
+    
+    @st.dialog("Confirm Deletion")
+    def confirm_delete_dialog(selected_ids):
+        st.warning(f"Are you sure you want to delete {len(selected_ids)} selected records? This action cannot be undone.")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Yes, Delete", type="primary", use_container_width=True):
+                if delete_records(selected_ids):
+                    st.success("Deleted successfully!")
+                    time.sleep(1)
+                    st.rerun()
+        with c2:
+            if st.button("Cancel", use_container_width=True):
+                st.rerun()
+
     with act_col3:
         sel = edited_df[edited_df["Select"] == True]
         delete_btn_label = f"🗑️ Delete ({len(sel)})" if not sel.empty else "🗑️ Delete"
         if st.button(delete_btn_label, type="primary", use_container_width=True, disabled=sel.empty):
-            if delete_records(sel["id"].tolist() if "id" in sel.columns else []):
-                st.success("Deleted!"); time.sleep(1); st.rerun()
+            confirm_delete_dialog(sel["id"].tolist() if "id" in sel.columns else [])
 
     st.markdown("---")
     st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b;">🗺️ Database Coverage Map</p>', unsafe_allow_html=True)
