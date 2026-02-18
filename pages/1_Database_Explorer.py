@@ -150,6 +150,34 @@ def confirm_delete_dialog(selected_values, target_col):
         if st.button("Batal", use_container_width=True):
             st.rerun()
 
+@st.dialog("Detail Data")
+def show_row_details(row):
+    st.markdown(f"### 🏢 {row['Name']}")
+    st.markdown("---")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write("**📍 Alamat**")
+        st.write(row.get('Address', row.get('Alamat', '-')))
+        st.write("**🗺️ Lokasi**")
+        st.write(f"- **Provinsi:** {row.get('Provinsi', '-')}")
+        st.write(f"- **Kabupaten:** {row.get('Kabupaten', '-')}")
+        st.write(f"- **Kecamatan:** {row.get('Kecamatan', '-')}")
+        st.write(f"- **Kelurahan:** {row.get('Kelurahan', '-')}")
+    
+    with col_b:
+        st.write("**🌐 Koordinat**")
+        st.write(f"- **Latitude:** `{row.get('Latitude', '-')}`")
+        st.write(f"- **Longitude:** `{row.get('Longitude', '-')}`")
+        
+        gmap_url = row.get('URL', '')
+        if gmap_url:
+            st.link_button("🚀 Buka di Google Maps", gmap_url, use_container_width=True)
+            
+    st.markdown("---")
+    if st.button("Tutup", use_container_width=True):
+        st.rerun()
+
 # --- MAIN APP LOGIC ---
 
 if 'username' not in st.session_state: st.session_state.username = 'demo_user' 
@@ -231,8 +259,15 @@ if not df_db.empty:
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor_fixed_v2"
+        key="main_editor_fixed_v2",
+        selection_mode="single_row"
     )
+
+    # Deteksi Klik Baris
+    if "selection" in st.session_state.main_editor_fixed_v2 and st.session_state.main_editor_fixed_v2["selection"]["rows"]:
+        selected_row_idx = st.session_state.main_editor_fixed_v2["selection"]["rows"][0]
+        selected_row_data = df_db.iloc[selected_row_idx]
+        show_row_details(selected_row_data)
 
     st.write("") 
 
