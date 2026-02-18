@@ -15,14 +15,15 @@ except Exception as e:
     st.error(f"Gagal menghubungkan ke database: {e}")
     st.stop()
 
-def fetch_db_data():
+@st.cache_data(ttl=0)
+def fetch_db_data(username, is_superuser):
     """Fetch data filtered by user unless superuser."""
     try:
         query = "SELECT * FROM scraped_results"
         params = {}
-        if not st.session_state.get('is_superuser', False):
+        if not is_superuser:
             query += " WHERE username = :user"
-            params['user'] = st.session_state.get('username')
+            params['user'] = username
         return conn.query(query, params=params, ttl=0)
     except Exception as e:
         st.warning(f"Error fetching data: {e}")
@@ -39,6 +40,7 @@ def delete_records(ids):
                     session.execute(text("DELETE FROM scraped_results WHERE id = :id AND username = :user"), 
                                     {"id": rid, "user": st.session_state.get('username')})
             session.commit()
+        st.cache_data.clear() # Clear cache after deletion
         return True
     except Exception as e:
         st.error(f"Error deleting: {e}")
@@ -60,6 +62,7 @@ def deduplicate_db(df):
                                 {"user": st.session_state.get('username')})
             session.commit()
         df_unique.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
+        st.cache_data.clear() # Clear cache after deduplication
         return True
     except Exception as e:
         st.error(f"Error: {e}")
@@ -79,7 +82,7 @@ def format_wa_link(phone):
     return None
 
 # Main UI
-df_db = fetch_db_data()
+df_db = fetch_db_data(st.session_state.get('username'), st.session_state.get('is_superuser', False))
 
 if df_db is not None and not df_db.empty:
     st.markdown('<div style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 20px; border-radius: 15px; margin-bottom: 25px; color: white;"><h3 style="margin:0; color: white; font-size: 1.5rem;">📊 Data Insights Dashboard</h3><p style="margin:0; opacity: 0.8; font-size: 0.9rem;">Filtering data for: '+str(st.session_state.username)+'</p></div>', unsafe_allow_html=True)
@@ -110,7 +113,7 @@ if df_db is not None and not df_db.empty:
     # Disable all except Select
     disabled_cols = [c for c in df_display.columns if c != "Select"]
     
-    edited_df = st.data_editor(df_display, column_config=config, disabled=disabled_cols, hide_index=True, use_container_width=True, key="db_editor_v3")
+    edited_df = st.data_editor(df_display, column_config=config, disabled=disabled_cols, hide_index=True, use_container_width=True, key="db_editor_v4")
     
     act_col1, act_col2, act_col3 = st.columns(3)
     with act_col1:
@@ -122,10 +125,10 @@ if df_db is not None and not df_db.empty:
         st.download_button("📥 Export Excel", data=buf.getvalue(), file_name="sbrgo_export.xlsx", use_container_width=True)
     with act_col3:
         sel = edited_df[edited_df["Select"] == True]
-        if not sel.empty:
-            if st.button(f"🗑️ Delete ({len(sel)})", type="primary", use_container_width=True):
-                if delete_records(sel["id"].tolist() if "id" in sel.columns else []):
-                    st.success("Deleted!"); time.sleep(1); st.rerun()
+        delete_btn_label = f"🗑️ Delete ({len(sel)})" if not sel.empty else "🗑️ Delete"
+        if st.button(delete_btn_label, type="primary", use_container_width=True, disabled=sel.empty):
+            if delete_records(sel["id"].tolist() if "id" in sel.columns else []):
+                st.success("Deleted!"); time.sleep(1); st.rerun()
 
     st.markdown("---")
     st.markdown('<p style="font-size:1.3rem; font-weight:600; color:#1e293b;">🗺️ Database Coverage Map</p>', unsafe_allow_html=True)
