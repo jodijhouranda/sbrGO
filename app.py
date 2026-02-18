@@ -12,6 +12,7 @@ import folium
 from streamlit_folium import st_folium
 import json
 from sqlalchemy import text 
+import base64
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -24,7 +25,24 @@ if 'authenticated' not in st.session_state: st.session_state.authenticated = Fal
 if 'username' not in st.session_state: st.session_state.username = None
 if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
 
-# --- 2. AUTHENTICATION LOGIC ---
+# --- 2. AUTHENTICATION LOGIC (FIXED) ---
+
+def encode_auth(username, is_superuser):
+    """Encode user session to a simple token for URL persistence."""
+    # Format: username:is_admin (e.g., "admin:True") -> Base64
+    raw_str = f"{username}:{is_superuser}"
+    return base64.b64encode(raw_str.encode()).decode()
+
+def decode_auth(token):
+    """Decode session token from URL."""
+    try:
+        decoded_bytes = base64.b64decode(token)
+        decoded_str = decoded_bytes.decode()
+        username, is_superuser_str = decoded_str.split(":")
+        return username, is_superuser_str == "True"
+    except:
+        return None, False
+
 def check_login(username, password):
     """Verify credentials against TiDB."""
     cert_path = os.path.abspath("isrgrootx1.pem")
@@ -42,8 +60,8 @@ def check_login(username, password):
     return False, None, False
 
 def handle_logout():
-    # Clear localStorage via JS
-    streamlit_js_eval(js_expressions='localStorage.removeItem("nosbrgo_auth")', key='clear_auth_js')
+    # Clear URL params and session
+    st.query_params.clear()
     st.session_state.authenticated = False
     st.session_state.username = None
     st.session_state.is_superuser = False
@@ -122,12 +140,10 @@ def show_login_page():
                     st.session_state.username = user
                     st.session_state.is_superuser = is_admin
                     
-                    # Save to localStorage for persistence
-                    auth_payload = json.dumps({'user': user, 'is_admin': is_admin})
-                    streamlit_js_eval(
-                        js_expressions=f'localStorage.setItem("nosbrgo_auth", \'{auth_payload}\')', 
-                        key='save_auth_js'
-                    )
+                    # PERSISTENCE FIX: Save token to URL
+                    token = encode_auth(user, is_admin)
+                    st.query_params["session"] = token
+                    
                     time.sleep(0.5)
                     st.rerun()
                 else:
@@ -242,7 +258,7 @@ def apply_global_styles():
     </style>
     """, unsafe_allow_html=True)
 
-# --- 4. SCRAPER UI FUNCTION (Fully Restored) ---
+# --- 4. SCRAPER UI FUNCTION ---
 def show_scraper_page():
     st.markdown('<div class="logo-container"><p class="main-title"><span class="title-no">No</span><span class="title-sbr">SBR</span><span class="title-go">Go</span></p></div>', unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Scrape business data from Google Maps in seconds.</p>', unsafe_allow_html=True)
@@ -366,20 +382,22 @@ def show_scraper_page():
     
     st.markdown("<br><p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ by JJS</p>", unsafe_allow_html=True)
 
-# --- 5. MAIN NAVIGATION LOGIC (PERSISTENT) ---
+# --- 5. MAIN NAVIGATION LOGIC (PERSISTENT VIA URL) ---
 
-# Check localStorage for auth token if session is empty
+# Check URL Params for auth persistence
 if not st.session_state.authenticated:
-    stored_auth = streamlit_js_eval(js_expressions='localStorage.getItem("nosbrgo_auth")', key='load_auth_js_main')
-    if stored_auth:
-        try:
-            auth_data = json.loads(stored_auth)
+    # Cek apakah ada token di URL
+    session_token = st.query_params.get("session")
+    if session_token:
+        username, is_superuser = decode_auth(session_token)
+        if username:
             st.session_state.authenticated = True
-            st.session_state.username = auth_data['user']
-            st.session_state.is_superuser = auth_data['is_admin']
-            st.rerun()
-        except:
-            pass
+            st.session_state.username = username
+            st.session_state.is_superuser = is_superuser
+            # Hapus rerun di sini agar tidak looping, biarkan flow berlanjut
+        else:
+            # Token invalid/corrupt
+            st.query_params.clear()
 
 if not st.session_state.authenticated:
     show_login_page()
