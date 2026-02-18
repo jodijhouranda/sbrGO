@@ -42,6 +42,16 @@ st.markdown("""
         color: #64748b;
         margin-bottom: 20px;
     }
+    /* Styling khusus untuk tabel detail di dalam popup */
+    .detail-table td {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+    .detail-key {
+        font-weight: bold;
+        color: #475569;
+        width: 150px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,7 +87,6 @@ def delete_records(values, column_name="id"):
     try:
         with conn.session as session:
             for val in values:
-                # Query dinamis berdasarkan kolom target (id atau URL)
                 query_str = f"DELETE FROM scraped_results WHERE `{column_name}` = :val"
                 params = {"val": val}
                 
@@ -124,7 +133,48 @@ def format_wa_link(phone):
     elif clean_phone.startswith('8'): return f"https://wa.me/62{clean_phone}"
     return None
 
-# --- DIALOGS ---
+# --- DIALOGS (POPUP) ---
+
+@st.dialog("Detail Data Usaha")
+def show_detail_dialog(row):
+    """
+    Menampilkan popup detail sesuai request:
+    Nama, Alamat, Provinsi, Kabupaten, Kecamatan, Kelurahan, Long Lat, Link Gmap
+    """
+    st.subheader(f"🏢 {row.get('Name', 'Tanpa Nama')}")
+    st.markdown("---")
+    
+    # Mengambil data dengan aman (gunakan .get untuk menghindari error jika kolom tidak ada)
+    alamat = row.get('Address', row.get('Alamat', '-'))
+    provinsi = row.get('Provinsi', '-')
+    kabupaten = row.get('Kabupaten', '-')
+    kecamatan = row.get('Kecamatan', '-')
+    kelurahan = row.get('Kelurahan', '-')
+    lat = row.get('Latitude', '-')
+    lng = row.get('Longitude', '-')
+    url = row.get('URL', '#')
+    
+    # Layout menggunakan HTML agar rapi
+    st.markdown(f"""
+    <table class="detail-table" style="width:100%; border-collapse: collapse;">
+        <tr><td class="detail-key">📍 Alamat</td><td>{alamat}</td></tr>
+        <tr><td class="detail-key">🗺️ Provinsi</td><td>{provinsi}</td></tr>
+        <tr><td class="detail-key">🏙️ Kabupaten</td><td>{kabupaten}</td></tr>
+        <tr><td class="detail-key">🏘️ Kecamatan</td><td>{kecamatan}</td></tr>
+        <tr><td class="detail-key">🏡 Kelurahan</td><td>{kelurahan}</td></tr>
+        <tr><td class="detail-key">🌐 Koordinat</td><td>{lat}, {lng}</td></tr>
+    </table>
+    <br>
+    """, unsafe_allow_html=True)
+    
+    # Tombol Link
+    col_link1, col_link2 = st.columns(2)
+    with col_link1:
+        st.link_button("📍 Buka Google Maps", url, use_container_width=True)
+    with col_link2:
+        if st.button("Tutup Popup", use_container_width=True):
+            st.rerun()
+
 @st.dialog("Konfirmasi Penghapusan")
 def confirm_delete_dialog(selected_values, target_col):
     st.warning(f"⚠️ Anda akan menghapus **{len(selected_values)}** data.")
@@ -191,7 +241,7 @@ if not df_db.empty:
 
     st.write("") 
 
-    # 3. Table Editor (FIXED: No Hidden Param)
+    # 3. Table Editor
     
     # Deteksi kolom unik
     target_delete_col = "id"
@@ -209,48 +259,56 @@ if not df_db.empty:
         "Rating": st.column_config.NumberColumn("⭐", format="%.1f"),
     }
     
-    # ATUR VISIBILITAS VIA COLUMN_ORDER
-    # Kita buat list kolom yang akan DITAMPILKAN.
     all_cols = df_db.columns.tolist()
     if "Select" in all_cols:
         all_cols.remove("Select")
-        all_cols.insert(0, "Select") # Pindah Select ke depan
+        all_cols.insert(0, "Select")
     
     display_cols = all_cols.copy()
-    
-    # Jika targetnya 'id' (teknis), kita sembunyikan dari tampilan agar rapi.
-    # TAPI jika targetnya 'URL' atau 'Name', kita TETAP TAMPILKAN karena itu informasi berguna.
     if target_delete_col == "id" and "id" in display_cols:
         display_cols.remove("id")
     
     edited_df = st.data_editor(
         df_db,
         column_config=config,
-        column_order=display_cols, # Hanya kolom di list ini yang tampil
+        column_order=display_cols,
         disabled=[c for c in df_db.columns if c != "Select"],
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor_fixed_v2"
+        key="main_editor_fixed_v3"
     )
 
     st.write("") 
 
-    # 4. Action Buttons
+    # 4. Action Buttons (Menambah Tombol DETAIL)
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as wr:
         output_df = edited_df.drop(columns=['Select']) if 'Select' in edited_df.columns else edited_df
         output_df.to_excel(wr, index=False)
     excel_data = excel_buffer.getvalue()
 
-    c_act1, c_act2, c_act3 = st.columns(3)
+    # KITA UBAH JADI 4 KOLOM
+    c_act1, c_act2, c_act3, c_act4 = st.columns(4)
+
+    # TOMBOL LIHAT DETAIL (BARU)
+    with c_act1:
+        if st.button("ℹ️ Lihat Detail", use_container_width=True):
+            selected = edited_df[edited_df["Select"] == True]
+            if len(selected) == 1:
+                # Ambil baris pertama sebagai Series
+                row_data = selected.iloc[0]
+                show_detail_dialog(row_data)
+            elif len(selected) > 1:
+                st.warning("⚠️ Pilih 1 baris saja untuk melihat detail.")
+            else:
+                st.info("ℹ️ Centang kotak 'Select' pada 1 baris untuk melihat detail.")
 
     # TOMBOL DELETE
-    with c_act1:
-        if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
+    with c_act2:
+        if st.button("🗑️ Hapus Data", type="primary", use_container_width=True):
             selected = edited_df[edited_df["Select"] == True]
             if not selected.empty:
-                # Pastikan kolom target ada di dataframe yang diedit
                 if target_delete_col in selected.columns:
                     vals_to_delete = selected[target_delete_col].tolist()
                     confirm_delete_dialog(vals_to_delete, target_delete_col)
@@ -260,8 +318,8 @@ if not df_db.empty:
                 st.warning("⚠️ Pilih data terlebih dahulu.")
 
     # TOMBOL DEDUPLICATE
-    with c_act2:
-        if st.button("♻️ Remove Duplicates", use_container_width=True):
+    with c_act3:
+        if st.button("♻️ Hapus Duplikat", use_container_width=True):
             with st.spinner("Membersihkan duplikat..."):
                 if deduplicate_db(df_db):
                     st.session_state.refresh_needed = True
@@ -270,7 +328,7 @@ if not df_db.empty:
                     st.rerun()
 
     # TOMBOL EXPORT
-    with c_act3:
+    with c_act4:
         st.download_button(
             label="📥 Export Excel",
             data=excel_data,
@@ -304,7 +362,7 @@ if not df_db.empty:
             wa_link = row.get('WhatsApp Link')
             if pd.isna(wa_link): 
                 wa_link = format_wa_link(row.get('Phone', ''))
-                
+            
             gmap_link = row.get('URL', '')
 
             # Tombol HTML
