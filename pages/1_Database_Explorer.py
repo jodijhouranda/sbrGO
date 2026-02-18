@@ -251,27 +251,42 @@ if not df_db.empty:
     if target_delete_col == "id" and "id" in display_cols:
         display_cols.remove("id")
     
-    edited_df = st.data_editor(
-        df_db,
-        column_config=config,
-        column_order=display_cols, # Hanya kolom di list ini yang tampil
-        disabled=[c for c in df_db.columns if c != "Select"],
-        hide_index=True,
-        use_container_width=True,
-        height=400,
-        key="main_editor_fixed_v2",
-        selection_mode="single_row"
-    )
+    try:
+        edited_df = st.data_editor(
+            df_db,
+            column_config=config,
+            column_order=display_cols, # Hanya kolom di list ini yang tampil
+            disabled=[c for c in df_db.columns if c != "Select"],
+            hide_index=True,
+            use_container_width=True,
+            height=400,
+            key="main_editor_fixed_v2",
+            on_select="rerun",
+            selection_mode="single_row"
+        )
 
-    # Deteksi Klik Baris
-    if "selection" in st.session_state.main_editor_fixed_v2 and st.session_state.main_editor_fixed_v2["selection"]["rows"]:
-        selected_row_idx = st.session_state.main_editor_fixed_v2["selection"]["rows"][0]
-        
-        # BERSIHKAN SELEKSI SEGERA untuk memutus loop rerun
-        st.session_state.main_editor_fixed_v2["selection"]["rows"] = []
-        
-        selected_row_data = df_db.iloc[selected_row_idx]
-        show_row_details(selected_row_data)
+        # Deteksi Klik Baris
+        if "selection" in st.session_state.main_editor_fixed_v2 and st.session_state.main_editor_fixed_v2["selection"]["rows"]:
+            selected_row_idx = st.session_state.main_editor_fixed_v2["selection"]["rows"][0]
+            
+            # BERSIHKAN SELEKSI SEGERA untuk memutus loop rerun
+            st.session_state.main_editor_fixed_v2["selection"]["rows"] = []
+            
+            selected_row_data = df_db.iloc[selected_row_idx]
+            show_row_details(selected_row_data)
+    except Exception as e:
+        st.error(f"Error in data_editor: {e}")
+        # Fallback to basic editor if selection_mode fails
+        edited_df = st.data_editor(
+            df_db,
+            column_config=config,
+            column_order=display_cols,
+            disabled=[c for c in df_db.columns if c != "Select"],
+            hide_index=True,
+            use_container_width=True,
+            height=400,
+            key="main_editor_basic"
+        )
 
     st.write("") 
 
