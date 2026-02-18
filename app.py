@@ -10,6 +10,7 @@ import time
 from streamlit_js_eval import streamlit_js_eval
 import folium
 from streamlit_folium import st_folium
+import json
 
 # Fix for Windows asyncio loop policy
 if sys.platform == 'win32':
@@ -34,6 +35,8 @@ def check_login(username, password):
     return False, None, False
 
 def handle_logout():
+    # Clear localStorage via JS
+    streamlit_js_eval(js_expressions='localStorage.removeItem("nosbrgo_auth")', key='clear_auth_js')
     st.session_state.authenticated = False
     st.session_state.username = None
     st.session_state.is_superuser = False
@@ -122,6 +125,9 @@ def show_login_page():
                     st.session_state.authenticated = True
                     st.session_state.username = user
                     st.session_state.is_superuser = is_admin
+                    # Save to localStorage
+                    auth_payload = json.dumps({'user': user, 'is_admin': is_admin})
+                    streamlit_js_eval(js_expressions=f'localStorage.setItem("nosbrgo_auth", \'{auth_payload}\')', key='save_auth_js')
                     st.rerun()
                 else:
                     st.error("Authentication failed. Please check your credentials.")
@@ -397,6 +403,19 @@ st.set_page_config(page_title="NoSBRGo", page_icon="favicon.svg", layout="wide")
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'username' not in st.session_state: st.session_state.username = None
 if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
+
+# --- PERSISTENT SESSION CHECK ---
+if not st.session_state.authenticated:
+    stored_auth = streamlit_js_eval(js_expressions='localStorage.getItem("nosbrgo_auth")', key='load_auth_js')
+    if stored_auth:
+        try:
+            auth_data = json.loads(stored_auth)
+            st.session_state.authenticated = True
+            st.session_state.username = auth_data['user']
+            st.session_state.is_superuser = auth_data['is_admin']
+            st.rerun()
+        except:
+            pass
 
 if not st.session_state.authenticated:
     show_login_page()
