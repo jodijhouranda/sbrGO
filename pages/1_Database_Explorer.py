@@ -6,6 +6,7 @@ import time
 import os
 from streamlit_folium import st_folium
 import folium
+from streamlit_js_eval import streamlit_js_eval
 
 # --- CUSTOM CSS ---
 st.markdown("""
@@ -209,48 +210,114 @@ if not df_db.empty:
         "Rating": st.column_config.NumberColumn("⭐", format="%.1f"),
     }
     
-    # ATUR VISIBILITAS VIA COLUMN_ORDER
-    # Kita buat list kolom yang akan DITAMPILKAN.
-    all_cols = df_db.columns.tolist()
-    if "Select" in all_cols:
-        all_cols.remove("Select")
-        all_cols.insert(0, "Select") # Pindah Select ke depan
-    
-    display_cols = all_cols.copy()
-    
-    # Jika targetnya 'id' (teknis), kita sembunyikan dari tampilan agar rapi.
-    # TAPI jika targetnya 'URL' atau 'Name', kita TETAP TAMPILKAN karena itu informasi berguna.
-    if target_delete_col == "id" and "id" in display_cols:
-        display_cols.remove("id")
-    
-    edited_df = st.data_editor(
-        df_db,
-        column_config=config,
-        column_order=display_cols, # Hanya kolom di list ini yang tampil
-        disabled=[c for c in df_db.columns if c != "Select"],
-        hide_index=True,
-        use_container_width=True,
-        height=400,
-        key="main_editor_fixed_v2"
-    )
+    # --- VIEW SELECTION ---
+    tab_list, tab_edit = st.tabs(["📋 Action List (Copy Focus)", "🗂️ Management Grid"])
+
+    with tab_list:
+        # Pagination Settings
+        items_per_page = 20
+        total_pages = max(1, (len(df_db) + items_per_page - 1) // items_per_page)
+        
+        col_page1, col_page2 = st.columns([1, 4])
+        with col_page1:
+            page_num = st.number_input("Halaman", min_value=1, max_value=total_pages, value=1)
+        
+        start_idx = (page_num - 1) * items_per_page
+        end_idx = min(start_idx + items_per_page, len(df_db))
+        
+        st.caption(f"Menampilkan {start_idx+1}-{end_idx} dari {len(df_db)} data")
+        
+        # Header columns for the list
+        h_cols = st.columns([0.5, 0.8, 3, 5])
+        h_cols[0].write("**Sel**")
+        h_cols[1].write("**Copy**")
+        h_cols[2].write("**Nama Bisnis**")
+        h_cols[3].write("**Alamat / Lokasi**")
+        st.markdown("---")
+
+        # Iterate through the page window
+        page_df = df_db.iloc[start_idx:end_idx].copy()
+        for idx, row in page_df.iterrows():
+            r_cols = st.columns([0.5, 0.8, 3, 5])
+            
+            # 1. Selection Checkbox (Synced with main state)
+            checkbox_key = f"sel_{idx}_{st.session_state.get('username', 'user')}"
+            is_selected = r_cols[0].checkbox(" ", key=checkbox_key, value=row["Select"], label_visibility="collapsed")
+            if is_selected != row["Select"]:
+                st.session_state.df_db_v5.at[idx, "Select"] = is_selected
+                # No rerun here to keep it "silent", but state is updated
+
+            # 2. Copy Button
+            copy_text = (
+                f"Nama: {row.get('Name', '-')}\n"
+                f"Alamat: {row.get('Address', row.get('Alamat', '-'))}\n"
+                f"Kabupaten: {row.get('Kabupaten', '-')}\n"
+                f"Kecamatan: {row.get('Kecamatan', '-')}\n"
+                f"Kelurahan: {row.get('Kelurahan', '-')}\n"
+                f"Coords: {row.get('Latitude', '-')}, {row.get('Longitude', '-')}"
+            )
+            
+            with r_cols[1]:
+                if st.button("📋", key=f"btn_copy_{idx}", help="Copy details to clipboard"):
+                    streamlit_js_eval(
+                        js_expressions=f"navigator.clipboard.writeText(`{copy_text}`)",
+                        want_output=False,
+                        key=f"js_copy_{idx}"
+                    )
+                    st.toast(f"Copied: {row['Name'][:20]}...")
+
+            # 3. Name & Address
+            r_cols[2].write(f"**{row.get('Name', 'N/A')}**")
+            loc_info = f"{row.get('Address', '-')[:60]}... "
+            r_cols[3].write(f"<small>{loc_info}</small>", unsafe_allow_html=True)
+            st.markdown("<div style='margin:-10px 0 5px 0; opacity:0.1; border-top:1px solid gray;'></div>", unsafe_allow_html=True)
+
+    with tab_edit:
+        # ATUR VISIBILITAS VIA COLUMN_ORDER
+        # Kita buat list kolom yang akan DITAMPILKAN.
+        all_cols = df_db.columns.tolist()
+        if "Select" in all_cols:
+            all_cols.remove("Select")
+            all_cols.insert(0, "Select") # Pindah Select ke depan
+        
+        display_cols = all_cols.copy()
+        
+        # Jika targetnya 'id' (teknis), kita sembunyikan dari tampilan agar rapi.
+        if target_delete_col == "id" and "id" in display_cols:
+            display_cols.remove("id")
+        
+        edited_df = st.data_editor(
+            df_db,
+            column_config=config,
+            column_order=display_cols,
+            disabled=[c for c in df_db.columns if c != "Select"],
+            hide_index=True,
+            use_container_width=True,
+            height=500,
+            key="main_editor_fixed_v3" # Versi baru untuk tab
+        )
+        # Tab editor updates its own state or we sync it? 
+        # For simplicity, we use the state from Action List as the primary source of truth for "Select"
+        # and update the editor's return to the session state.
+        st.session_state.df_db_v5 = edited_df
 
     st.write("") 
 
     # 4. Action Buttons
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as wr:
-        output_df = edited_df.drop(columns=['Select']) if 'Select' in edited_df.columns else edited_df
+        output_df = st.session_state.df_db_v5.drop(columns=['Select']) if 'Select' in st.session_state.df_db_v5.columns else st.session_state.df_db_v5
         output_df.to_excel(wr, index=False)
     excel_data = excel_buffer.getvalue()
 
     c_act1, c_act2, c_act3 = st.columns(3)
 
-    # TOMBOL DELETE
+    # TOMBOL DELETE (Mengambil data dari session state yang diupdate di kedua tab)
     with c_act1:
         if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
-            selected = edited_df[edited_df["Select"] == True]
+            current_df = st.session_state.df_db_v5
+            selected = current_df[current_df["Select"] == True]
             if not selected.empty:
-                # Pastikan kolom target ada di dataframe yang diedit
                 if target_delete_col in selected.columns:
                     vals_to_delete = selected[target_delete_col].tolist()
                     confirm_delete_dialog(vals_to_delete, target_delete_col)
