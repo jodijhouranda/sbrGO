@@ -384,9 +384,8 @@ def show_scraper_page():
 
 # --- 5. MAIN NAVIGATION LOGIC (PERSISTENT VIA URL) ---
 
-# Check URL Params for auth persistence
+# 1. Sync dari URL ke Session (Untuk handle Refresh)
 if not st.session_state.authenticated:
-    # Cek apakah ada token di URL
     session_token = st.query_params.get("session")
     if session_token:
         username, is_superuser = decode_auth(session_token)
@@ -394,10 +393,13 @@ if not st.session_state.authenticated:
             st.session_state.authenticated = True
             st.session_state.username = username
             st.session_state.is_superuser = is_superuser
-            # Hapus rerun di sini agar tidak looping, biarkan flow berlanjut
         else:
-            # Token invalid/corrupt
             st.query_params.clear()
+
+# 2. Sync dari Session ke URL (Untuk handle navigasi antar halaman)
+# Ini memastikan token selalu ada di URL bar di halaman mana pun
+if st.session_state.authenticated and "session" not in st.query_params:
+    st.query_params["session"] = encode_auth(st.session_state.username, st.session_state.is_superuser)
 
 if not st.session_state.authenticated:
     show_login_page()
