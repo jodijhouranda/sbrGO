@@ -42,11 +42,6 @@ st.markdown("""
         color: #64748b;
         margin-bottom: 20px;
     }
-    /* Styling khusus untuk tabel detail di dalam popup */
-    .detail-table td {
-        padding: 8px;
-        border-bottom: 1px solid #eee;
-    }
     .detail-key {
         font-weight: bold;
         color: #475569;
@@ -138,41 +133,58 @@ def format_wa_link(phone):
 @st.dialog("Detail Data Usaha")
 def show_detail_dialog(row):
     """
-    Menampilkan popup detail sesuai request:
-    Nama, Alamat, Provinsi, Kabupaten, Kecamatan, Kelurahan, Long Lat, Link Gmap
+    Menampilkan popup dengan fitur Copy (Salin)
     """
-    st.subheader(f"🏢 {row.get('Name', 'Tanpa Nama')}")
+    # Header Popup
+    st.subheader("🏢 Detail Lokasi")
+    st.caption("Klik ikon 'Copy' di pojok kanan kolom untuk menyalin.")
+    
+    # Data Penting (Dengan Tombol Copy via st.code)
+    
+    # 1. Nama
+    st.markdown("**📛 Nama Usaha**")
+    st.code(row.get('Name', '-'), language=None)
+    
+    # 2. Alamat
+    st.markdown("**📍 Alamat**")
+    st.code(row.get('Address', row.get('Alamat', '-')), language=None)
+    
+    # 3. Latitude & Longitude (Dipisah)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**🌐 Latitude**")
+        st.code(row.get('Latitude', '-'), language=None)
+    with c2:
+        st.markdown("**🌐 Longitude**")
+        st.code(row.get('Longitude', '-'), language=None)
+        
     st.markdown("---")
     
-    # Mengambil data dengan aman (gunakan .get untuk menghindari error jika kolom tidak ada)
-    alamat = row.get('Address', row.get('Alamat', '-'))
+    # Data Tambahan (Administratif) - Tampil sebagai tabel rapi
     provinsi = row.get('Provinsi', '-')
     kabupaten = row.get('Kabupaten', '-')
     kecamatan = row.get('Kecamatan', '-')
     kelurahan = row.get('Kelurahan', '-')
-    lat = row.get('Latitude', '-')
-    lng = row.get('Longitude', '-')
     url = row.get('URL', '#')
     
-    # Layout menggunakan HTML agar rapi
     st.markdown(f"""
-    <table class="detail-table" style="width:100%; border-collapse: collapse;">
-        <tr><td class="detail-key">📍 Alamat</td><td>{alamat}</td></tr>
-        <tr><td class="detail-key">🗺️ Provinsi</td><td>{provinsi}</td></tr>
-        <tr><td class="detail-key">🏙️ Kabupaten</td><td>{kabupaten}</td></tr>
-        <tr><td class="detail-key">🏘️ Kecamatan</td><td>{kecamatan}</td></tr>
-        <tr><td class="detail-key">🏡 Kelurahan</td><td>{kelurahan}</td></tr>
-        <tr><td class="detail-key">🌐 Koordinat</td><td>{lat}, {lng}</td></tr>
-    </table>
+    <div style="font-size:0.9rem;">
+        <table style="width:100%; border-collapse: collapse;">
+            <tr><td style="font-weight:bold; width:120px; padding:5px;">🗺️ Provinsi</td><td>{provinsi}</td></tr>
+            <tr><td style="font-weight:bold; width:120px; padding:5px;">🏙️ Kabupaten</td><td>{kabupaten}</td></tr>
+            <tr><td style="font-weight:bold; width:120px; padding:5px;">🏘️ Kecamatan</td><td>{kecamatan}</td></tr>
+            <tr><td style="font-weight:bold; width:120px; padding:5px;">🏡 Kelurahan</td><td>{kelurahan}</td></tr>
+        </table>
+    </div>
     <br>
     """, unsafe_allow_html=True)
     
-    # Tombol Link
-    col_link1, col_link2 = st.columns(2)
-    with col_link1:
+    # Tombol Aksi
+    col_act1, col_act2 = st.columns(2)
+    with col_act1:
         st.link_button("📍 Buka Google Maps", url, use_container_width=True)
-    with col_link2:
-        if st.button("Tutup Popup", use_container_width=True):
+    with col_act2:
+        if st.button("Tutup", use_container_width=True):
             st.rerun()
 
 @st.dialog("Konfirmasi Penghapusan")
@@ -243,7 +255,6 @@ if not df_db.empty:
 
     # 3. Table Editor
     
-    # Deteksi kolom unik
     target_delete_col = "id"
     if "id" not in df_db.columns:
         if "URL" in df_db.columns:
@@ -276,33 +287,31 @@ if not df_db.empty:
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor_fixed_v3"
+        key="main_editor_fixed_v4"
     )
 
     st.write("") 
 
-    # 4. Action Buttons (Menambah Tombol DETAIL)
+    # 4. Action Buttons (4 Kolom)
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as wr:
         output_df = edited_df.drop(columns=['Select']) if 'Select' in edited_df.columns else edited_df
         output_df.to_excel(wr, index=False)
     excel_data = excel_buffer.getvalue()
 
-    # KITA UBAH JADI 4 KOLOM
     c_act1, c_act2, c_act3, c_act4 = st.columns(4)
 
-    # TOMBOL LIHAT DETAIL (BARU)
+    # TOMBOL DETAIL
     with c_act1:
         if st.button("ℹ️ Lihat Detail", use_container_width=True):
             selected = edited_df[edited_df["Select"] == True]
             if len(selected) == 1:
-                # Ambil baris pertama sebagai Series
                 row_data = selected.iloc[0]
                 show_detail_dialog(row_data)
             elif len(selected) > 1:
-                st.warning("⚠️ Pilih 1 baris saja untuk melihat detail.")
+                st.warning("⚠️ Pilih hanya 1 baris untuk detail.")
             else:
-                st.info("ℹ️ Centang kotak 'Select' pada 1 baris untuk melihat detail.")
+                st.info("ℹ️ Centang 1 baris untuk melihat detail.")
 
     # TOMBOL DELETE
     with c_act2:
