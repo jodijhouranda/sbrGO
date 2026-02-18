@@ -7,10 +7,9 @@ import os
 from streamlit_folium import st_folium
 import folium
 
-# --- CUSTOM CSS (Desain Tombol & Layout) ---
+# --- CUSTOM CSS ---
 st.markdown("""
 <style>
-    /* Styling Metric Cards */
     div[data-testid="stMetric"] {
         background-color: #f8fafc;
         padding: 15px;
@@ -18,25 +17,18 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-
-    /* Styling Tombol agar Seragam dan Full Width */
     div.stButton > button, div.stDownloadButton > button {
         width: 100%;
         border-radius: 8px;
         font-weight: 600;
-        height: auto;
         padding: 0.6rem 1rem;
         transition: all 0.3s ease;
         border: none;
     }
-
-    /* Efek Hover */
     div.stButton > button:hover, div.stDownloadButton > button:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    
-    /* Header Dashboard */
     .dashboard-header {
         background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         padding: 20px;
@@ -45,7 +37,6 @@ st.markdown("""
         color: white;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
-    
     .subtitle {
         font-size: 1.2rem;
         color: #64748b;
@@ -82,15 +73,20 @@ def fetch_db_data(username, is_superuser):
         st.warning(f"Error fetching data: {e}")
         return None
 
-def delete_records(ids):
+def delete_records(values, column_name="id"):
+    """Menghapus data berdasarkan kolom tertentu (id atau URL)"""
     try:
         with conn.session as session:
-            for rid in ids:
-                if st.session_state.get('is_superuser', False):
-                    session.execute(text("DELETE FROM scraped_results WHERE id = :id"), {"id": rid})
-                else:
-                    session.execute(text("DELETE FROM scraped_results WHERE id = :id AND username = :user"), 
-                                    {"id": rid, "user": st.session_state.get('username')})
+            for val in values:
+                # Query dinamis tergantung kolom kunci (id atau URL)
+                query_str = f"DELETE FROM scraped_results WHERE `{column_name}` = :val"
+                params = {"val": val}
+                
+                if not st.session_state.get('is_superuser', False):
+                    query_str += " AND username = :user"
+                    params["user"] = st.session_state.get('username')
+                
+                session.execute(text(query_str), params)
             session.commit()
         st.cache_data.clear()
         return True
@@ -101,24 +97,30 @@ def delete_records(ids):
 def deduplicate_db(df):
     if df is None or df.empty: return True
     try:
+        # Hapus duplikat di memori
         df_unique = df.sort_values('scraped_at', ascending=False).drop_duplicates(
             subset=['Name', 'Latitude', 'Longitude'], keep='first'
         )
+        
         with conn.session as session:
+            # Hapus semua data lama user ini
             if st.session_state.get('is_superuser', False):
                 session.execute(text("DELETE FROM scraped_results"))
             else:
                 session.execute(text("DELETE FROM scraped_results WHERE username = :user"), 
                                 {"user": st.session_state.get('username')})
             session.commit()
+            
+        # Insert ulang data bersih
         df_unique.to_sql('scraped_results', con=conn.engine, if_exists='append', index=False)
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error deduplication: {e}")
         return False
 
 def format_wa_link(phone):
+    """Fallback generator WA link jika kolom 'WhatsApp Link' kosong"""
     if pd.isna(phone): return None
     clean_phone = "".join(filter(str.isdigit, str(phone)))
     if not clean_phone: return None
@@ -129,20 +131,20 @@ def format_wa_link(phone):
 
 # --- DIALOGS ---
 @st.dialog("Konfirmasi Penghapusan")
-def confirm_delete_dialog(selected_ids):
-    st.warning(f"⚠️ Hapus {len(selected_ids)} data?")
-    st.write("Data yang dihapus tidak dapat dikembalikan.")
+def confirm_delete_dialog(selected_values, target_col):
+    st.warning(f"⚠️ Hapus {len(selected_values)} data?")
+    st.write(f"Data akan dihapus berdasarkan **{target_col}**.")
     
     col_yes, col_no = st.columns(2)
     with col_yes:
         if st.button("Ya, Hapus", type="primary", use_container_width=True):
-            # Progress Bar UI
             progress_bar = st.progress(0, text="Memproses...")
             for i in range(100):
-                time.sleep(0.005) 
+                time.sleep(0.005)
                 progress_bar.progress(i + 1, text="Menghapus data dari database...")
             
-            if delete_records(selected_ids):
+            # Panggil fungsi delete dengan kolom target yang dinamis
+            if delete_records(selected_values, column_name=target_col):
                 progress_bar.empty()
                 st.session_state.refresh_needed = True
                 st.success("✅ Berhasil dihapus!")
@@ -156,7 +158,6 @@ def confirm_delete_dialog(selected_ids):
 
 # --- MAIN APP LOGIC ---
 
-# Setup Session State
 if 'username' not in st.session_state: st.session_state.username = 'demo_user' 
 if 'is_superuser' not in st.session_state: st.session_state.is_superuser = False
 if 'refresh_needed' not in st.session_state: st.session_state.refresh_needed = False
@@ -166,7 +167,6 @@ if 'df_db_v5' not in st.session_state or st.session_state.refresh_needed:
     raw_data = fetch_db_data(st.session_state.username, st.session_state.is_superuser)
     if raw_data is not None and not raw_data.empty:
         df_init = raw_data.copy()
-        # Reset selection on load
         if "Select" in df_init.columns:
             df_init["Select"] = False
         else:
@@ -178,10 +178,8 @@ if 'df_db_v5' not in st.session_state or st.session_state.refresh_needed:
 
 df_db = st.session_state.df_db_v5
 
-# --- UI RENDER ---
-
 if not df_db.empty:
-    # 1. Header Dashboard
+    # 1. Header
     st.markdown(f"""
     <div class="dashboard-header">
         <h3 style="margin:0; font-size: 1.5rem;">📊 Data Insights Dashboard</h3>
@@ -199,18 +197,28 @@ if not df_db.empty:
 
     st.write("") 
 
-    # 3. Table Editor (Show ALL Columns)
+    # 3. Table Editor (Cerdas mendeteksi kolom ID)
     
-    # Config format kolom (untuk kolom yang umum saja)
+    # Deteksi kolom unik untuk penghapusan
+    # Prioritas: id -> URL -> Name
+    target_delete_col = "id"
+    if "id" not in df_db.columns:
+        if "URL" in df_db.columns:
+            target_delete_col = "URL" # Fallback ke URL jika id tidak ada
+        elif "Name" in df_db.columns:
+            target_delete_col = "Name"
+
     config = {
         "Select": st.column_config.CheckboxColumn("✅", width="small", default=False),
         "scraped_at": st.column_config.DatetimeColumn("Waktu Scrape", format="D MMM, HH:mm"),
         "URL": st.column_config.LinkColumn("Maps"),
         "Phone": st.column_config.TextColumn("Telepon"),
         "Rating": st.column_config.NumberColumn("⭐", format="%.1f"),
+        # Sembunyikan kolom target delete agar tabel rapi, tapi datanya tetap ada
+        target_delete_col: st.column_config.Column(hidden=True)
     }
     
-    # Logic untuk menampilkan SEMUA kolom dengan 'Select' di paling kiri
+    # Atur urutan kolom: Select paling kiri
     all_cols = df_db.columns.tolist()
     if "Select" in all_cols:
         all_cols.remove("Select")
@@ -219,19 +227,17 @@ if not df_db.empty:
     edited_df = st.data_editor(
         df_db,
         column_config=config,
-        column_order=all_cols, # Tampilkan semua
+        column_order=all_cols,
         disabled=[c for c in df_db.columns if c != "Select"],
         hide_index=True,
         use_container_width=True,
         height=400,
-        key="main_editor_v2"
+        key="main_editor_fix"
     )
 
     st.write("") 
 
-    # 4. Action Buttons (3 Kolom Sejajar)
-    
-    # Siapkan Data Excel
+    # 4. Action Buttons
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as wr:
         output_df = edited_df.drop(columns=['Select']) if 'Select' in edited_df.columns else edited_df
@@ -245,13 +251,12 @@ if not df_db.empty:
         if st.button("🗑️ Delete Selected", type="primary", use_container_width=True):
             selected = edited_df[edited_df["Select"] == True]
             if not selected.empty:
-                # PERBAIKAN UTAMA: Cari kolom ID (case-insensitive)
-                id_col = next((c for c in selected.columns if c.lower() == 'id'), None)
-                
-                if id_col:
-                    confirm_delete_dialog(selected[id_col].tolist())
+                # Gunakan kolom target yang sudah dideteksi (URL atau id)
+                if target_delete_col in selected.columns:
+                    vals_to_delete = selected[target_delete_col].tolist()
+                    confirm_delete_dialog(vals_to_delete, target_delete_col)
                 else:
-                    st.error("❌ Error: Kolom 'id' tidak ditemukan di database. Hubungi admin.")
+                    st.error(f"❌ Error: Kolom kunci '{target_delete_col}' hilang. Refresh halaman.")
             else:
                 st.warning("⚠️ Pilih data terlebih dahulu (centang kotak).")
 
@@ -277,7 +282,7 @@ if not df_db.empty:
 
     st.markdown("---")
 
-    # 5. Map Section
+    # 5. Map Section (FIXED CONTENT)
     st.markdown("### 🗺️ Peta Sebaran")
     map_df = df_db.copy()
     map_df['lat'] = pd.to_numeric(map_df['Latitude'], errors='coerce')
@@ -293,18 +298,42 @@ if not df_db.empty:
         marker_cluster = MarkerCluster().add_to(m)
 
         for _, row in map_df.iterrows():
-            wa = format_wa_link(row.get('Phone', ''))
-            wa_btn = f'<a href="{wa}" target="_blank" style="text-decoration:none; color:white; background:#25D366; padding:5px 10px; border-radius:5px;">Chat WA</a>' if wa else ""
-            popup_html = f"""
-            <div style="font-family:sans-serif; width:200px;">
-                <b>{row['Name']}</b><br>
-                <span style="color:gray; font-size:0.8em;">{row.get('Alamat', '')}</span><br><br>
-                {wa_btn}
+            # Logic Cerdas untuk Popup
+            # 1. Ambil Nama
+            name = row.get('Name', 'Tanpa Nama')
+            
+            # 2. Ambil Alamat (Cek kolom Address atau Alamat)
+            alamat = row.get('Address', row.get('Alamat', '-'))
+            if pd.isna(alamat): alamat = "-"
+            
+            # 3. Ambil Link WA (Prioritaskan kolom 'WhatsApp Link' dari DB)
+            wa_link = row.get('WhatsApp Link')
+            if pd.isna(wa_link): # Jika kosong, generate dari Phone
+                wa_link = format_wa_link(row.get('Phone', ''))
+                
+            # 4. Ambil Link Maps
+            gmap_link = row.get('URL', '')
+
+            # Buat HTML Tombol
+            wa_btn = ""
+            if wa_link:
+                wa_btn = f'<a href="{wa_link}" target="_blank" style="display:inline-block; margin-top:5px; text-decoration:none; color:white; background:#25D366; padding:4px 8px; border-radius:4px; font-size:0.8em;">💬 WhatsApp</a>'
+            
+            map_btn = ""
+            if gmap_link:
+                 map_btn = f'<a href="{gmap_link}" target="_blank" style="display:inline-block; margin-top:5px; margin-left:5px; text-decoration:none; color:white; background:#4285F4; padding:4px 8px; border-radius:4px; font-size:0.8em;">📍 G-Maps</a>'
+
+            popup_content = f"""
+            <div style="font-family:sans-serif; min-width:200px;">
+                <b style="font-size:1.1em; color:#333;">{name}</b><br>
+                <div style="color:#666; font-size:0.85em; margin: 4px 0 8px 0; line-height:1.2;">{alamat}</div>
+                <div>{wa_btn} {map_btn}</div>
             </div>
             """
+            
             folium.Marker(
                 [row['lat'], row['lng']],
-                popup=popup_html,
+                popup=folium.Popup(popup_content, max_width=300),
                 icon=folium.Icon(color="blue", icon="info-sign")
             ).add_to(marker_cluster)
             
