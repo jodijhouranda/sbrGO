@@ -384,7 +384,7 @@ def show_scraper_page():
     st.markdown("<br><p style='text-align: center; color: #94a3b8; font-size: 0.8rem;'>Created with ❤️ by JJS</p>", unsafe_allow_html=True)
 
 # Main Multi-page Entry Point
-st.set_page_config(page_title="NoSBRGo", page_icon="https://www.gstatic.com/images/branding/product/1x/googleg_48dp.png", layout="wide")
+st.set_page_config(page_title="NoSBRGo", page_icon="favicon.svg", layout="wide")
 
 if 'authenticated' not in st.session_state: st.session_state.authenticated = False
 if 'username' not in st.session_state: st.session_state.username = None
