@@ -296,7 +296,7 @@ def show_scraper_page():
             use_gpt = st.toggle("AI For KBLI", value=True)
             show_map = st.toggle("Show Map", value=True)
         with c2:
-            use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle)
+            use_location = st.toggle("My Location", value=st.session_state.use_location_toggle)
             secret_api_key = st.secrets.get("OPENAI_API_KEY")
             api_key = str(secret_api_key).strip() if secret_api_key else None
         with c3:
