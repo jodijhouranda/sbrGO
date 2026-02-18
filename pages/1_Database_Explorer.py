@@ -266,6 +266,10 @@ if not df_db.empty:
     # Deteksi Klik Baris
     if "selection" in st.session_state.main_editor_fixed_v2 and st.session_state.main_editor_fixed_v2["selection"]["rows"]:
         selected_row_idx = st.session_state.main_editor_fixed_v2["selection"]["rows"][0]
+        
+        # BERSIHKAN SELEKSI SEGERA untuk memutus loop rerun
+        st.session_state.main_editor_fixed_v2["selection"]["rows"] = []
+        
         selected_row_data = df_db.iloc[selected_row_idx]
         show_row_details(selected_row_data)
 
