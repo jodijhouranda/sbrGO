@@ -291,13 +291,18 @@ def show_scraper_page():
             total_results = st.number_input("Limit", 1, 50, 5)
         
         st.markdown("---")
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
             use_gpt = st.toggle("AI For KBLI", value=True)
+            show_map = st.toggle("Show Map", value=True)
+        with c2:
+            use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle)
             secret_api_key = st.secrets.get("OPENAI_API_KEY")
             api_key = str(secret_api_key).strip() if secret_api_key else None
-            show_map = st.toggle("Show Map", value=True)
-            use_location = st.toggle("Near Me", value=st.session_state.use_location_toggle)
+        with c3:
+            st.markdown('<p style="font-size:0.8rem; font-weight:600; margin-bottom:5px;">Search Mode</p>', unsafe_allow_html=True)
+            search_mode = st.radio("Mode", ["Near", "In"], horizontal=True, label_visibility="collapsed")
+            connector = "di sekitar" if search_mode == "Near" else "di"
         
         if use_location != st.session_state.use_location_toggle:
             st.session_state.use_location_toggle = use_location
@@ -320,7 +325,7 @@ def show_scraper_page():
                         time.sleep(0.5); st.rerun()
 
     target_loc = location_input if location_input else st.session_state.resolved_address
-    final_query = f"{search_term} di sekitar {target_loc}" if search_term and target_loc else search_term
+    final_query = f"{search_term} {connector} {target_loc}" if search_term and target_loc else search_term
 
     st.markdown("---")
     if search_term and target_loc:
